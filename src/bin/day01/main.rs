@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use lib::multiset::MultiSet;
 use std::str;
 
 fn parse_number(s: &str) -> i32 {
@@ -46,15 +46,9 @@ fn part1(input: &str) -> i32 {
 
 fn part2(input: &str) -> i32 {
     let data = parse_input(input);
-    let mut right_elems = BTreeMap::new();
-    for r in data.iter().map(|(_, r)| r) {
-        right_elems
-            .entry(r)
-            .and_modify(|count| *count += 1)
-            .or_insert(1);
-    }
+    let right_elems: MultiSet<i32> = data.iter().map(|(_, r)| r).copied().collect();
     data.iter()
-        .map(|(l, _)| l * right_elems.get(l).unwrap_or(&0))
+        .map(|(l, _)| l * *right_elems.get(l).unwrap_or(&0) as i32)
         .sum()
 }
 
