@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::str;
 
 fn parse_number(s: &str) -> i32 {
@@ -43,7 +44,27 @@ fn part1(input: &str) -> i32 {
         .sum()
 }
 
+fn part2(input: &str) -> i32 {
+    let data = parse_input(input);
+    let mut right_elems = BTreeMap::new();
+    for r in data.iter().map(|(_, r)| r) {
+        right_elems
+            .entry(r)
+            .and_modify(|count| *count += 1)
+            .or_insert(1);
+    }
+    data.iter()
+        .map(|(l, _)| l * right_elems.get(l).unwrap_or(&0))
+        .sum()
+}
+
+#[test]
+fn test_part2() {
+    assert_eq!(part2(test_input()), 31);
+}
+
 fn main() {
     let input = str::from_utf8(include_bytes!("input.txt")).unwrap();
     println!("part 1: {}", part1(input));
+    println!("part 2: {}", part2(input));
 }
