@@ -7,6 +7,12 @@ authors = ["James Youngman <james@youngman.org>"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+clap = "4"
+itertools = "0.13"
+
+[lib]
+name = "lib"
+path = "src/lib/lib.rs"
 
 [[bin]]
 name = "day01"
