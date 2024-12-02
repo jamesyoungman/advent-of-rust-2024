@@ -22,6 +22,10 @@ impl<T: Ord> MultiSet<T> {
         self.items.get(key)
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
     pub fn len(&self) -> usize {
         self.items.len()
     }
@@ -47,6 +51,7 @@ fn test_absent() {
 #[test]
 fn test_empty() {
     let counts: MultiSet<i32> = Vec::new().iter().copied().collect();
+    assert!(counts.is_empty());
     assert_eq!(counts.get(&1), None);
 }
 
@@ -57,6 +62,7 @@ fn test_len() {
 
     let empty: MultiSet<i32> = Vec::new().iter().copied().collect();
     assert_eq!(empty.len(), 0);
+    assert!(empty.is_empty());
 }
 
 #[test]

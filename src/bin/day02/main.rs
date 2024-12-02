@@ -108,7 +108,7 @@ fn test_safe_extra_cases() {
 fn part1(input: &str) -> usize {
     parse_input(input)
         .iter()
-        .filter(|report| safe(&report))
+        .filter(|report| safe(report))
         .count()
 }
 
@@ -120,7 +120,7 @@ fn test_part1() {
 fn part2(input: &str) -> usize {
     parse_input(input)
         .iter()
-        .filter(|report| safe_with_damping(&report))
+        .filter(|report| safe_with_damping(report))
         .count()
 }
 
