@@ -70,6 +70,25 @@ fn safe(report: &[i32]) -> bool {
     }
 }
 
+fn safe_with_damping(report: &[i32]) -> bool {
+    if safe(report) {
+        return true;
+    }
+    for remove_index in 0..report.len() {
+        let edited: Vec<i32> = report
+            .iter()
+            .enumerate()
+            .filter(|(pos, _)| *pos != remove_index)
+            .map(|(_, val)| val)
+            .copied()
+            .collect();
+        if safe(&edited) {
+            return true;
+        }
+    }
+    false
+}
+
 #[test]
 fn test_safe_provided_cases() {
     assert!(safe(&[7, 6, 4, 2, 1]));
@@ -98,7 +117,20 @@ fn test_part1() {
     assert_eq!(part1(sample_input()), 2)
 }
 
+fn part2(input: &str) -> usize {
+    parse_input(input)
+        .iter()
+        .filter(|report| safe_with_damping(&report))
+        .count()
+}
+
+#[test]
+fn test_part2() {
+    assert_eq!(part2(sample_input()), 4)
+}
+
 fn main() {
     let input = str::from_utf8(include_bytes!("input.txt")).unwrap();
     println!("part 1: {}", part1(input));
+    println!("part 2: {}", part2(input));
 }
