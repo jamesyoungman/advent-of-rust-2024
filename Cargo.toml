@@ -9,6 +9,7 @@ authors = ["James Youngman <james@youngman.org>"]
 [dependencies]
 clap = "4"
 itertools = "0.13"
+regex = "1"
 
 [lib]
 name = "lib"
@@ -18,3 +19,5 @@ path = "src/lib/lib.rs"
 name = "day01"
 [[bin]]
 name = "day02"
+[[bin]]
+name = "day03"
