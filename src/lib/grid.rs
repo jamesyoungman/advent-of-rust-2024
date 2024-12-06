@@ -77,25 +77,30 @@ impl Debug for Position {
 }
 
 impl Position {
-    pub fn move_direction(&self, d: &CompassDirection) -> Position {
+    pub fn repeated_move_direction(&self, d: &CompassDirection, count: usize) -> Position {
+        let count = count as i64;
         match d {
             CompassDirection::North => Position {
-                y: self.y - 1,
+                y: self.y - count,
                 ..*self
             },
             CompassDirection::South => Position {
-                y: self.y + 1,
+                y: self.y + count,
                 ..*self
             },
             CompassDirection::East => Position {
-                x: self.x + 1,
+                x: self.x + count,
                 ..*self
             },
             CompassDirection::West => Position {
-                x: self.x - 1,
+                x: self.x - count,
                 ..*self
             },
         }
+    }
+
+    pub fn move_direction(&self, d: &CompassDirection) -> Position {
+        self.repeated_move_direction(d, 1)
     }
 
     pub fn neighbour_xbearing(&self, to: &Position) -> Result<Option<CompassDirection>, String> {
