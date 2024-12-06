@@ -16,6 +16,7 @@ struct Grid {
     obstruction: Option<Position>,
     visited: HashSet<GuardState>,
     guard: GuardState,
+    bbox: Position,
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
@@ -25,19 +26,8 @@ enum PatrolOutcome {
 }
 
 impl Grid {
-    fn contains(&self, pos: &Position) -> bool {
-        self.get(pos).is_some()
-    }
-
-    fn bounds(&self) -> Position {
-        if self.cells.is_empty() {
-            Position { x: 0, y: 0 }
-        } else {
-            Position {
-                x: self.cells[0].len() as i64,
-                y: self.cells.len() as i64,
-            }
-        }
+    fn inbounds(&self, pos: &Position) -> bool {
+        pos.x >= 0 && pos.y >= 0 && pos.y < self.bbox.y && pos.x < self.bbox.x
     }
 
     fn add_obstruction(&mut self, pos: Position) -> bool {
@@ -93,7 +83,7 @@ impl Grid {
     }
 
     fn patrol(&mut self) -> PatrolOutcome {
-        while self.contains(&self.guard.pos) {
+        while self.inbounds(&self.guard.pos) {
             if self.visited.contains(&self.guard) {
                 return PatrolOutcome::InfiniteLoop;
             }
@@ -179,12 +169,21 @@ impl TryFrom<&str> for Grid {
         }
         match guard {
             Some(g) => {
+                let bbox = if cells.is_empty() {
+                    Position { x: 0, y: 0 }
+                } else {
+                    Position {
+                        x: cells[0].len() as i64,
+                        y: cells.len() as i64,
+                    }
+                };
                 cells[g.pos.y as usize][g.pos.x as usize] = '.';
                 Ok(Grid {
                     cells,
                     obstruction: None,
                     visited: HashSet::new(),
                     guard: g,
+                    bbox,
                 })
             }
             None => Err("guard not found".to_string()),
@@ -260,23 +259,26 @@ fn test_part2() {
     assert_eq!(part2(sample_input()), 6);
 }
 
+fn obstacle_candidate_locations(mut grid: Grid) -> HashSet<Position> {
+    // Figure out the path we take if we add no obstruction.
+    grid.patrol();
+    // It's useful to consider placing an obsrtruction in each square
+    // we actually occupied.  This provides roughly a 3x speed-up
+    // (compared to trying every square).
+    grid.visited.iter().map(|state| state.pos).collect()
+}
+
 fn part2(s: &str) -> usize {
     let original_grid = Grid::try_from(s).expect("part 2 input should be valid");
-    let bbox = original_grid.bounds();
+    let candidates = obstacle_candidate_locations(original_grid.clone());
     let mut result = 0;
-    for obstruction_x in 0..bbox.x {
-        for obstruction_y in 0..bbox.y {
-            let mut grid = original_grid.clone();
-            let obstruction = Position {
-                x: obstruction_x,
-                y: obstruction_y,
-            };
-            if grid.add_obstruction(obstruction) {
-                match grid.patrol() {
-                    PatrolOutcome::WentAway => (),
-                    PatrolOutcome::InfiniteLoop => {
-                        result += 1;
-                    }
+    for obstruction in candidates {
+        let mut grid = original_grid.clone();
+        if grid.add_obstruction(obstruction) {
+            match grid.patrol() {
+                PatrolOutcome::WentAway => (),
+                PatrolOutcome::InfiniteLoop => {
+                    result += 1;
                 }
             }
         }
