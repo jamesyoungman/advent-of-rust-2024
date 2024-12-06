@@ -1,5 +1,4 @@
 use lib::grid::Position;
-use std::collections::HashSet;
 use std::str;
 
 #[derive(Debug, Clone, Copy)]
@@ -41,8 +40,46 @@ impl Direction8 {
     }
 }
 
-fn parse_input(s: &str) -> Vec<Vec<char>> {
-    s.lines().map(|line| line.chars().collect()).collect()
+fn repeated_travel(pos: &Position, dir: &Direction8, count: i64) -> Position {
+    let delta = dir.delta();
+    Position {
+        x: pos.x + (delta.0 * count),
+        y: pos.y + (delta.1 * count),
+    }
+}
+
+struct Grid {
+    letters: Vec<Vec<char>>,
+    h: i64,
+    w: i64,
+}
+
+impl Grid {
+    fn get(&self, pos: &Position) -> char {
+        self.letters[pos.y as usize][pos.x as usize]
+    }
+
+    fn inrange(&self, pos: Position) -> bool {
+        if pos.y < 0 || pos.y >= self.h {
+            false
+        } else {
+            pos.x >= 0 && pos.x < self.w
+        }
+    }
+}
+
+fn parse_input(s: &str) -> Grid {
+    let cells: Vec<Vec<char>> = s.lines().map(|line| line.chars().collect()).collect();
+    let h = cells.len() as i64;
+    if h == 0 {
+        panic!("empty grid is not supported");
+    }
+    let w = cells[0].len() as i64;
+    Grid {
+        letters: cells,
+        h,
+        w,
+    }
 }
 
 #[cfg(test)]
@@ -64,7 +101,7 @@ fn sample_input() -> &'static str {
 #[test]
 fn test_parse_input() {
     assert_eq!(
-        parse_input(sample_input()),
+        parse_input(sample_input()).letters,
         vec![
             vec!['M', 'M', 'M', 'S', 'X', 'X', 'M', 'A', 'S', 'M'],
             vec!['M', 'S', 'A', 'M', 'X', 'M', 'S', 'M', 'S', 'A'],
@@ -80,112 +117,95 @@ fn test_parse_input() {
     );
 }
 
-struct Found {
-    pos: Position,
-    dir: Direction8,
-}
+mod part1 {
+    use super::*;
 
-fn repeated_travel(pos: &Position, dir: &Direction8, count: i64) -> Position {
-    let delta = dir.delta();
-    Position {
-        x: pos.x + (delta.0 * count),
-        y: pos.y + (delta.1 * count),
-    }
-}
-
-fn inrange(haystack: &[Vec<char>], pos: Position) -> bool {
-    if pos.y < 0 || pos.y >= haystack.len() as i64 {
-        false
-    } else {
-        let w = haystack[0].len() as i64;
-        pos.x >= 0 && pos.x < w
-    }
-}
-
-fn is_hit(haystack: &[Vec<char>], needle: &str, pos: Position, dir: &Direction8) -> bool {
-    let n = needle.len() - 1;
-    let final_letter_pos = repeated_travel(&pos, dir, n as i64);
-    if !(inrange(haystack, pos) && inrange(haystack, final_letter_pos)) {
-        false
-    } else {
-        for (i, expected) in needle.chars().enumerate() {
-            let here = repeated_travel(&pos, dir, i as i64);
-            let got = haystack[here.y as usize][here.x as usize];
-            if got != expected {
-                return false;
+    fn is_hit(haystack: &Grid, needle: &str, pos: Position, dir: &Direction8) -> bool {
+        let n = needle.len() - 1;
+        let final_letter_pos = repeated_travel(&pos, dir, n as i64);
+        if !(haystack.inrange(pos) && haystack.inrange(final_letter_pos)) {
+            false
+        } else {
+            for (i, expected) in needle.chars().enumerate() {
+                let here = repeated_travel(&pos, dir, i as i64);
+                let got = haystack.get(&here);
+                if got != expected {
+                    return false;
+                }
             }
+            true
         }
-        true
     }
-}
 
-fn search(haystack: &[Vec<char>], needle: &str) -> Vec<Found> {
-    let mut result = Vec::new();
-    let h = haystack.len();
-    let w = haystack[0].len();
-    fn p(x: usize, y: usize) -> Position {
-        Position {
-            x: x as i64,
-            y: y as i64,
-        }
-    }
-    for y in 0..h {
-        for x in 0..w {
-            let pos = p(x, y);
-            for dir in ALL_DIRECTIONS.iter() {
-                if is_hit(haystack, needle, pos, dir) {
-                    result.push(Found { pos, dir: *dir });
+    fn part1_search(haystack: &Grid, needle: &str) -> usize {
+        let mut result: usize = 0;
+        for y in 0..haystack.h {
+            for x in 0..haystack.w {
+                let pos = Position { x, y };
+                for dir in ALL_DIRECTIONS.iter() {
+                    if is_hit(haystack, needle, pos, dir) {
+                        result += 1;
+                    }
                 }
             }
         }
+        result
     }
-    result
+
+    pub fn solve(s: &str) -> usize {
+        let grid = parse_input(s);
+        let needle = "XMAS";
+        part1_search(&grid, needle)
+    }
+
+    #[test]
+    fn test_solve() {
+        assert_eq!(solve(sample_input()), 18);
+    }
 }
 
-fn print_grid_with_hits(grid: &[Vec<char>], hits: &[Found], hit_len: usize) -> String {
-    let h = grid.len();
-    let w = grid[0].len();
-    let mut hit_positions: HashSet<Position> = HashSet::new();
-    for hit in hits {
-        for i in 0..hit_len {
-            let pos = repeated_travel(&hit.pos, &hit.dir, i as i64);
-            hit_positions.insert(pos);
+mod part2 {
+    use super::*;
+
+    fn is_x_mas(haystack: &Grid, pos: &Position) -> bool {
+        fn is_ms_or_sm(first: char, last: char) -> bool {
+            matches!((first, last), ('M', 'S') | ('S', 'M'))
         }
+
+        haystack.get(pos) == 'A' &&
+            is_ms_or_sm(haystack.get(&Position{x: pos.x-1, y: pos.y-1}), // NW
+			haystack.get(&Position{x: pos.x+1, y: pos.y+1})) // SE
+	    &&
+	    is_ms_or_sm(haystack.get(&Position{x: pos.x+1, y: pos.y-1}), // NE
+			haystack.get(&Position{x: pos.x-1, y: pos.y+1})) // SW
     }
-    let mut result = String::new();
-    for y in 0..h {
-        for x in 0..w {
-            let pos = Position {
-                x: x as i64,
-                y: y as i64,
-            };
-            let ch = grid[y][x];
-            if hit_positions.contains(&pos) {
-                result.push(ch);
-            } else {
-                result.push('.');
+
+    fn part2_search(grid: &Grid) -> Vec<Position> {
+        let mut result = Vec::new();
+        for y in 1..(grid.h - 1) {
+            for x in 1..(grid.w - 1) {
+                let pos = Position { x, y };
+                if is_x_mas(grid, &pos) {
+                    result.push(pos);
+                }
             }
         }
-        result.push('\n');
+        result
     }
-    result
-}
 
-fn part1(s: &str) -> usize {
-    let grid = parse_input(s);
-    let needle = "XMAS";
-    let hits = search(&grid, needle);
-    println!("{}", print_grid_with_hits(&grid, &hits, needle.len()));
-    hits.len()
-}
+    pub fn solve(s: &str) -> usize {
+        let grid = parse_input(s);
+        part2_search(&grid).len()
+    }
 
-#[test]
-fn test_part1() {
-    assert_eq!(part1(sample_input()), 18);
+    #[test]
+    fn test_solve() {
+        assert_eq!(solve(sample_input()), 9);
+    }
 }
 
 fn main() {
     let input = str::from_utf8(include_bytes!("input.txt")).unwrap();
-    println!("day 04 part 1: {}", part1(input));
-    //println!("day 04 part 2: {}", part2(input));
+    println!("day 04 part 1: {}", part1::solve(input));
+    println!("day 04 part 2: {}", part2::solve(input));
 }
