@@ -4,12 +4,24 @@ use std::collections::HashSet;
 use std::fmt::{Display, Write};
 use std::str;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
+struct GuardState {
+    pos: Position,
+    orientation: CompassDirection,
+}
+
+#[derive(Debug, Clone)]
 struct Grid {
     cells: Vec<Vec<char>>,
-    visited: HashSet<Position>,
-    guard_orientation: CompassDirection,
-    guard_pos: Position,
+    obstruction: Option<Position>,
+    visited: HashSet<GuardState>,
+    guard: GuardState,
+}
+
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
+enum PatrolOutcome {
+    WentAway,
+    InfiniteLoop,
 }
 
 impl Grid {
@@ -17,7 +29,60 @@ impl Grid {
         self.get(pos).is_some()
     }
 
+    fn bounds(&self) -> Position {
+        if self.cells.is_empty() {
+            Position { x: 0, y: 0 }
+        } else {
+            Position {
+                x: self.cells[0].len() as i64,
+                y: self.cells.len() as i64,
+            }
+        }
+    }
+
+    fn add_obstruction(&mut self, pos: Position) -> bool {
+        match self.get(&pos) {
+            Some('#' | '>' | '<' | 'v' | '^') => false,
+            Some('O') => {
+                panic!("only one obstruction is supported");
+            }
+            Some('.') => {
+                self.obstruction = Some(pos);
+                true
+            }
+            Some(other) => {
+                panic!("unexpected character {other} in grid");
+            }
+            None => {
+                panic!("obstructions can only be placed inside the grid");
+            }
+        }
+    }
+
+    fn have_visited(&self, pos: &Position) -> bool {
+        use CompassDirection::*;
+        [North, East, South, West].iter().any(|orientation| {
+            self.visited.contains(&GuardState {
+                pos: *pos,
+                orientation: *orientation,
+            })
+        })
+    }
+
+    fn distinct_position_count(&self) -> usize {
+        self.visited
+            .iter()
+            .map(|state| state.pos)
+            .collect::<HashSet<_>>()
+            .len()
+    }
+
     fn get(&self, pos: &Position) -> Option<char> {
+        if let Some(opos) = self.obstruction.as_ref() {
+            if opos == pos {
+                return Some('O');
+            }
+        }
         if pos.y >= 0 && pos.x >= 0 && pos.y < self.cells.len() as i64 {
             let row = &self.cells[pos.y as usize];
             if pos.x < row.len() as i64 {
@@ -27,26 +92,23 @@ impl Grid {
         None
     }
 
-    fn patrol(&mut self) {
-        let mut limit = 1_000_000;
-        while self.contains(&self.guard_pos) {
-            if limit == 0 {
-                panic!("infinite patrol\n{}\n{:?}", self, self);
-            } else {
-                limit -= 1;
+    fn patrol(&mut self) -> PatrolOutcome {
+        while self.contains(&self.guard.pos) {
+            if self.visited.contains(&self.guard) {
+                return PatrolOutcome::InfiniteLoop;
             }
-
-            self.visited.insert(self.guard_pos);
-            let next = self.guard_pos.move_direction(&self.guard_orientation);
+            self.visited.insert(self.guard);
+            let next = self.guard.pos.move_direction(&self.guard.orientation);
             match self.get(&next) {
-                Some('#') => {
-                    self.guard_orientation = self.guard_orientation.rotated_clockwise();
+                Some('#' | 'O') => {
+                    self.guard.orientation = self.guard.orientation.rotated_clockwise();
                 }
                 _ => {
-                    self.guard_pos = next;
+                    self.guard.pos = next;
                 }
             }
         }
+        PatrolOutcome::WentAway
     }
 }
 
@@ -68,9 +130,15 @@ impl Display for Grid {
                     x: x as i64,
                     y: y as i64,
                 };
-                if self.guard_pos == here {
-                    f.write_char(guard_indicator(self.guard_orientation))?;
-                } else if self.visited.contains(&here) {
+                if let Some(op) = self.obstruction {
+                    if op == here {
+                        f.write_char('O')?;
+                        continue;
+                    }
+                }
+                if self.guard.pos == here {
+                    f.write_char(guard_indicator(self.guard.orientation))?;
+                } else if self.have_visited(&here) {
                     f.write_char('X')?;
                 } else {
                     f.write_char(*ch)?;
@@ -87,7 +155,7 @@ impl TryFrom<&str> for Grid {
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         let mut cells: Vec<Vec<char>> = s.lines().map(|line| line.chars().collect()).collect();
-        let mut guard: Option<(Position, CompassDirection)> = None;
+        let mut guard: Option<GuardState> = None;
         for (y, row) in cells.iter().enumerate() {
             for (x, ch) in row.iter().enumerate() {
                 let here = Position {
@@ -103,17 +171,20 @@ impl TryFrom<&str> for Grid {
                         continue;
                     }
                 };
-                guard = Some((here, orientation));
+                guard = Some(GuardState {
+                    pos: here,
+                    orientation,
+                });
             }
         }
         match guard {
-            Some((guard_pos, guard_orientation)) => {
-                cells[guard_pos.y as usize][guard_pos.x as usize] = '.';
+            Some(g) => {
+                cells[g.pos.y as usize][g.pos.x as usize] = '.';
                 Ok(Grid {
                     cells,
+                    obstruction: None,
                     visited: HashSet::new(),
-                    guard_orientation,
-                    guard_pos,
+                    guard: g,
                 })
             }
             None => Err("guard not found".to_string()),
@@ -146,7 +217,7 @@ fn test_parse_input() {
 #[test]
 fn test_grid_display() {
     let mut grid = Grid::try_from(concat!(".>.\n", "#..\n")).expect("grid should be valid");
-    grid.guard_pos.x = 0;
+    grid.guard.pos.x = 0;
     assert_eq!(&grid.to_string(), ">..\n#..\n");
 }
 
@@ -176,7 +247,7 @@ fn test_patrol() {
 fn part1(s: &str) -> usize {
     let mut grid = Grid::try_from(s).expect("part 1 input should be valid");
     grid.patrol();
-    grid.visited.len()
+    grid.distinct_position_count()
 }
 
 #[test]
@@ -184,7 +255,37 @@ fn test_part1() {
     assert_eq!(part1(sample_input()), 41);
 }
 
+#[test]
+fn test_part2() {
+    assert_eq!(part2(sample_input()), 6);
+}
+
+fn part2(s: &str) -> usize {
+    let original_grid = Grid::try_from(s).expect("part 2 input should be valid");
+    let bbox = original_grid.bounds();
+    let mut result = 0;
+    for obstruction_x in 0..bbox.x {
+        for obstruction_y in 0..bbox.y {
+            let mut grid = original_grid.clone();
+            let obstruction = Position {
+                x: obstruction_x,
+                y: obstruction_y,
+            };
+            if grid.add_obstruction(obstruction) {
+                match grid.patrol() {
+                    PatrolOutcome::WentAway => (),
+                    PatrolOutcome::InfiniteLoop => {
+                        result += 1;
+                    }
+                }
+            }
+        }
+    }
+    result
+}
+
 fn main() {
     let input = str::from_utf8(include_bytes!("input.txt")).unwrap();
     println!("day 05 part 1: {}", part1(input));
+    println!("day 05 part 2: {}", part2(input));
 }
