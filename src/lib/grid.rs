@@ -21,6 +21,16 @@ impl CompassDirection {
             West => East,
         }
     }
+
+    pub fn rotated_clockwise(&self) -> CompassDirection {
+        use CompassDirection::*;
+        match self {
+            North => East,
+            East => South,
+            South => West,
+            West => North,
+        }
+    }
 }
 
 impl Display for CompassDirection {
