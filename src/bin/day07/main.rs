@@ -16,7 +16,11 @@ fn parse_equation(s: &str) -> Equation {
         }
         Some((left, right)) => {
             let result: Number = parse_number(left);
-            let input = right.split(' ').map(parse_number).collect();
+            let input: Vec<Number> = right.split(' ').map(parse_number).collect();
+            // Verify that all numbers are non-negative so that we
+            // know the assumptions about the limit in eval_step() are
+            // correct.
+            assert!(input.iter().all(|n| n >= &0));
             Equation {
                 result: result as Number,
                 input,
@@ -147,20 +151,29 @@ fn test_concatenate() {
     assert_eq!(concatenate(10, 9), 109);
 }
 
-fn eval_step(left: Number, right: Number, op: Operator) -> Number {
-    match op {
+fn eval_step(left: Number, right: Number, op: Operator, limit: Number) -> Option<Number> {
+    let result = match op {
         Operator::Add => left + right,
         Operator::Multiply => left * right,
         Operator::Concatenate => concatenate(left, right),
+    };
+    if result > limit {
+        None
+    } else {
+        Some(result)
     }
 }
 
-fn evaluate(numbers: &[Number], operators: Vec<Operator>) -> Number {
+/// Evaluate an expression, using the provided numbers and operators.
+/// If the result exceeds limit, stop early.  This is a minor
+/// optimisation arising from the observation that none of the
+/// operations decrease the value of the result.
+fn evaluate(numbers: &[Number], operators: Vec<Operator>, limit: Number) -> Option<Number> {
     match numbers {
         [accumulator, tail @ ..] => tail
             .iter()
             .zip(operators)
-            .fold(*accumulator, |acc, (n, op)| eval_step(acc, *n, op)),
+            .try_fold(*accumulator, |acc, (n, op)| eval_step(acc, *n, op, limit)),
         [] => {
             panic!("empty numbers");
         }
@@ -169,29 +182,58 @@ fn evaluate(numbers: &[Number], operators: Vec<Operator>) -> Number {
 
 #[test]
 fn test_evaluate_two_items() {
-    assert_eq!(evaluate(&[0, 0], vec![Operator::Add]), 0);
-    assert_eq!(evaluate(&[0, 0], vec![Operator::Multiply]), 0);
-    assert_eq!(evaluate(&[0, 1], vec![Operator::Add]), 1);
-    assert_eq!(evaluate(&[0, 1], vec![Operator::Multiply]), 0);
-    assert_eq!(evaluate(&[2, 1], vec![Operator::Add]), 3);
-    assert_eq!(evaluate(&[2, 3], vec![Operator::Multiply]), 6);
+    const NOLIMIT: Number = 1_000_000;
+    assert_eq!(evaluate(&[0, 0], vec![Operator::Add], NOLIMIT), Some(0));
+    assert_eq!(
+        evaluate(&[0, 0], vec![Operator::Multiply], NOLIMIT),
+        Some(0)
+    );
+    assert_eq!(evaluate(&[0, 1], vec![Operator::Add], NOLIMIT), Some(1));
+    assert_eq!(
+        evaluate(&[0, 1], vec![Operator::Multiply], NOLIMIT),
+        Some(0)
+    );
+    assert_eq!(evaluate(&[2, 1], vec![Operator::Add], NOLIMIT), Some(3));
+    assert_eq!(
+        evaluate(&[2, 3], vec![Operator::Multiply], NOLIMIT),
+        Some(6)
+    );
 }
 
 #[test]
 fn test_evaluate_three_items() {
+    const NOLIMIT: Number = 1_000_000;
     assert_eq!(
-        evaluate(&[2, 3, 10], vec![Operator::Multiply, Operator::Add]),
-        16
+        evaluate(
+            &[2, 3, 10],
+            vec![Operator::Multiply, Operator::Add],
+            NOLIMIT
+        ),
+        Some(16)
     );
     assert_eq!(
-        evaluate(&[2, 3, 4], vec![Operator::Multiply, Operator::Multiply]),
-        24
+        evaluate(
+            &[2, 3, 4],
+            vec![Operator::Multiply, Operator::Multiply],
+            NOLIMIT
+        ),
+        Some(24)
+    );
+}
+
+#[test]
+fn test_evaluate_limit() {
+    assert_eq!(
+        evaluate(&[2, 3, 10], vec![Operator::Multiply, Operator::Add], 8),
+        None
     );
 }
 
 fn equation_is_valid_with_these_operators(eq: &Equation, operators: Vec<Operator>) -> bool {
-    let accumulator = evaluate(&eq.input, operators);
-    accumulator == eq.result
+    match evaluate(&eq.input, operators, eq.result) {
+        Some(value) => value == eq.result,
+        None => false,
+    }
 }
 
 #[test]
