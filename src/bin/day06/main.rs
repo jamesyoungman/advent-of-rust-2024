@@ -57,8 +57,7 @@ mod dense_grid_impl {
             let (x, y) = index;
             assert!(x < self.w);
             assert!(y < self.h);
-            let result = y * self.w + x;
-            result
+            y * self.w + x
         }
 
         pub fn iter(&self) -> DenseGridIterator<T> {
@@ -165,7 +164,7 @@ impl VisitSet {
         }
     }
 
-    pub fn iter<'a>(&'a self) -> VisitSetIterator<'a> {
+    pub fn iter(&self) -> VisitSetIterator<'_> {
         VisitSetIterator {
             begin: true,
             bits: None,
@@ -216,7 +215,7 @@ fn test_take_smallest_set_bit() {
     assert_eq!(take_smallest_set_bit(&mut val), None);
 }
 
-impl<'a> Iterator for VisitSetIterator<'a> {
+impl Iterator for VisitSetIterator<'_> {
     type Item = GuardState;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -235,22 +234,20 @@ impl<'a> Iterator for VisitSetIterator<'a> {
                 self.bits = self.inner.next().copied();
                 self.begin = false;
             }
-            loop {
-                match self.bits.as_mut() {
-                    None => {
-                        return None;
-                    }
-                    Some(b) => match take_smallest_set_bit(b) {
-                        None => {
-                            self.bits = None;
-                            continue 'outer;
-                        }
-                        Some(bit) => {
-                            let orientation: CompassDirection = VisitSet::bit_to_direction(bit);
-                            return Some(GuardState { pos, orientation });
-                        }
-                    },
+            match self.bits.as_mut() {
+                None => {
+                    return None;
                 }
+                Some(b) => match take_smallest_set_bit(b) {
+                    None => {
+                        self.bits = None;
+                        continue 'outer;
+                    }
+                    Some(bit) => {
+                        let orientation: CompassDirection = VisitSet::bit_to_direction(bit);
+                        return Some(GuardState { pos, orientation });
+                    }
+                },
             }
         }
     }

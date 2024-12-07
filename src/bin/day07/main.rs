@@ -176,7 +176,7 @@ where
     match numbers {
         [accumulator, tail @ ..] => {
             tail.iter()
-                .zip(operators.into_iter())
+                .zip(operators)
                 .try_fold(*accumulator, |acc, (n, op)| {
                     let operator: Operator = op.into();
                     eval_step(acc, *n, operator, limit)
@@ -242,7 +242,7 @@ where
     I: IntoIterator<Item = T>,
     T: Into<Operator>,
 {
-    match evaluate(&eq.input, operators.into_iter(), eq.result) {
+    match evaluate(&eq.input, operators, eq.result) {
         Some(value) => value == eq.result,
         None => false,
     }
