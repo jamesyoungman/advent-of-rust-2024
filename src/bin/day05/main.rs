@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::str;
+use lib::parse::parse_number;
 
 enum Removal {
     Vertices(HashSet<i32>),
@@ -175,15 +176,6 @@ impl OrderingRules {
 
     pub fn topological_ordering(self) -> Vec<i32> {
         self.successors.topological_ordering()
-    }
-}
-
-fn parse_number(s: &str) -> i32 {
-    match s.trim().parse() {
-        Ok(n) => n,
-        Err(e) => {
-            panic!("failed to parse '{s}' as a number: {e}");
-        }
     }
 }
 

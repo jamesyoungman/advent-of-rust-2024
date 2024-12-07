@@ -1,14 +1,6 @@
+use lib::parse::parse_number;
 use lib::multiset::MultiSet;
 use std::str;
-
-fn parse_number(s: &str) -> i32 {
-    match s.trim().parse() {
-        Ok(n) => n,
-        Err(e) => {
-            panic!("failed to parse '{s}' as a number: {e}");
-        }
-    }
-}
 
 fn parse_input(input: &str) -> Vec<(i32, i32)> {
     input
