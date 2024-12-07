@@ -76,24 +76,68 @@ fn test_parse_input() {
     )
 }
 
-fn eval_step(left: Number, right: Number, op: bool) -> Number {
-    if op {
-        left * right
-    } else {
-        left + right
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
+enum Operator {
+    #[default]
+    Add,
+    Multiply,
+    Concatenate, // part 2 only
+}
+
+impl Operator {
+    fn successor(&self) -> (bool, Operator) {
+        match self {
+            Operator::Add => (false, Operator::Multiply),
+            Operator::Multiply => (false, Operator::Concatenate),
+            Operator::Concatenate => (true, Operator::Add),
+        }
     }
 }
 
-fn equation_is_valid_with_these_operators(eq: &Equation, mut operators: u32) -> bool {
-    let mut numbers: Vec<Number> = eq.input.iter().rev().copied().collect();
-    let mut accumulator = numbers
-        .pop()
-        .expect("equation should have at least one number");
-    while let Some(n) = numbers.pop() {
-        let op = operators & 1 != 0;
-        operators >>= 1;
-        accumulator = eval_step(accumulator, n, op);
+fn eval_step(left: Number, right: Number, op: Operator) -> Number {
+    match op {
+        Operator::Add => left + right,
+        Operator::Multiply => left * right,
+        Operator::Concatenate => parse_number(&format!("{left}{right}")),
     }
+}
+
+fn evaluate(numbers: &[Number], operators: Vec<Operator>) -> Number {
+    match numbers {
+        [accumulator, tail @ ..] => tail
+            .iter()
+            .zip(operators)
+            .fold(*accumulator, |acc, (n, op)| eval_step(acc, *n, op)),
+        [] => {
+            panic!("empty numbers");
+        }
+    }
+}
+
+#[test]
+fn test_evaluate_two_items() {
+    assert_eq!(evaluate(&[0, 0], vec![Operator::Add]), 0);
+    assert_eq!(evaluate(&[0, 0], vec![Operator::Multiply]), 0);
+    assert_eq!(evaluate(&[0, 1], vec![Operator::Add]), 1);
+    assert_eq!(evaluate(&[0, 1], vec![Operator::Multiply]), 0);
+    assert_eq!(evaluate(&[2, 1], vec![Operator::Add]), 3);
+    assert_eq!(evaluate(&[2, 3], vec![Operator::Multiply]), 6);
+}
+
+#[test]
+fn test_evaluate_three_items() {
+    assert_eq!(
+        evaluate(&[2, 3, 10], vec![Operator::Multiply, Operator::Add]),
+        16
+    );
+    assert_eq!(
+        evaluate(&[2, 3, 4], vec![Operator::Multiply, Operator::Multiply]),
+        24
+    );
+}
+
+fn equation_is_valid_with_these_operators(eq: &Equation, operators: Vec<Operator>) -> bool {
+    let accumulator = evaluate(&eq.input, operators);
     accumulator == eq.result
 }
 
@@ -103,46 +147,184 @@ fn test_validity_check_with_operators() {
         result: 3267,
         input: vec![81, 40, 27],
     };
-    assert!(equation_is_valid_with_these_operators(&equation, 0b10u32));
-    assert!(equation_is_valid_with_these_operators(&equation, 0b01u32));
-    assert!(!equation_is_valid_with_these_operators(&equation, 0b00u32));
-    assert!(!equation_is_valid_with_these_operators(&equation, 0b11u32));
+    use Operator::*;
+    assert!(equation_is_valid_with_these_operators(
+        &equation,
+        vec![Add, Multiply]
+    ));
+    assert!(equation_is_valid_with_these_operators(
+        &equation,
+        vec![Multiply, Add]
+    ));
+    assert!(!equation_is_valid_with_these_operators(
+        &equation,
+        vec![Multiply, Multiply]
+    ));
+    assert!(!equation_is_valid_with_these_operators(
+        &equation,
+        vec![Add, Add]
+    ));
 }
 
-fn equation_is_valid(eq: &Equation) -> bool {
-    let limit = 1u32 << (eq.input.len() - 1);
-    (0..limit).any(|ops| equation_is_valid_with_these_operators(eq, ops))
+mod part1 {
+    use super::*;
+
+    fn make_ops(eq: &Equation, op_seq: u32) -> Vec<Operator> {
+        (0..(eq.input.len()))
+            .map(|bitpos| op_seq & (1 << bitpos) != 0)
+            .map(|use_add| {
+                if use_add {
+                    Operator::Add
+                } else {
+                    Operator::Multiply
+                }
+            })
+            .collect()
+    }
+
+    fn equation_is_valid(eq: &Equation) -> bool {
+        let limit = 1u32 << (eq.input.len() - 1);
+        (0..limit).any(|ops| {
+            let operations = make_ops(eq, ops);
+            equation_is_valid_with_these_operators(eq, operations)
+        })
+    }
+
+    #[test]
+    fn test_validity_check() {
+        let solvable = Equation {
+            result: 3267,
+            input: vec![81, 40, 27],
+        };
+        let unsolvable = Equation {
+            result: 21037,
+            input: vec![9, 7, 18, 13],
+        };
+        assert!(equation_is_valid(&solvable));
+        assert!(!equation_is_valid(&unsolvable));
+    }
+
+    pub fn solve(input: &[Equation]) -> Number {
+        input
+            .iter()
+            .filter(|eq| equation_is_valid(eq))
+            .map(|eq| eq.result)
+            .sum()
+    }
+
+    #[test]
+    fn test_solve() {
+        let input = parse_input(sample_input());
+        assert_eq!(solve(&input), 3749);
+    }
 }
 
-#[test]
-fn test_validity_check() {
-    let solvable = Equation {
-        result: 3267,
-        input: vec![81, 40, 27],
-    };
-    let unsolvable = Equation {
-        result: 21037,
-        input: vec![9, 7, 18, 13],
-    };
-    assert!(equation_is_valid(&solvable));
-    assert!(!equation_is_valid(&unsolvable));
-}
+mod part2 {
+    use super::*;
 
-fn part1(input: &[Equation]) -> Number {
-    input
-        .iter()
-        .filter(|eq| equation_is_valid(eq))
-        .map(|eq| eq.result)
-        .sum()
-}
+    struct OpIterator {
+        ops: Vec<Operator>,
+        saturated: bool,
+    }
 
-#[test]
-fn test_part1() {
-    let input = parse_input(sample_input());
-    assert_eq!(part1(&input), 3749);
+    impl OpIterator {
+        pub fn new(places: usize) -> OpIterator {
+            let mut ops = Vec::with_capacity(places);
+            ops.resize(places, Operator::Add);
+            OpIterator {
+                ops,
+                saturated: false,
+            }
+        }
+
+        fn increment(&mut self) {
+            assert!(!self.saturated);
+            for (revplace, digitval) in self.ops.iter_mut().enumerate().rev() {
+                let (carry, nextval) = digitval.successor();
+                *digitval = nextval;
+                if carry {
+                    if revplace == 0 {
+                        self.saturated = true;
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    impl Iterator for OpIterator {
+        type Item = Vec<Operator>;
+
+        fn next(&mut self) -> Option<Vec<Operator>> {
+            if self.saturated {
+                None
+            } else {
+                let result = self.ops.clone();
+                self.increment();
+                Some(result)
+            }
+        }
+    }
+
+    #[test]
+    fn test_op_iterator() {
+        use Operator::*;
+        let mut it = OpIterator::new(2);
+        assert_eq!(it.next(), Some(vec![Add, Add]));
+        assert_eq!(it.next(), Some(vec![Add, Multiply]));
+        assert_eq!(it.next(), Some(vec![Add, Concatenate]));
+        assert_eq!(it.next(), Some(vec![Multiply, Add]));
+        assert_eq!(it.next(), Some(vec![Multiply, Multiply]));
+        assert_eq!(it.next(), Some(vec![Multiply, Concatenate]));
+        assert_eq!(it.next(), Some(vec![Concatenate, Add]));
+        assert_eq!(it.next(), Some(vec![Concatenate, Multiply]));
+        assert_eq!(it.next(), Some(vec![Concatenate, Concatenate]));
+        assert_eq!(it.next(), None);
+    }
+
+    fn equation_is_valid(eq: &Equation) -> bool {
+        let mut op_it = OpIterator::new(eq.input.len() - 1);
+        op_it.any(|operations| equation_is_valid_with_these_operators(eq, operations))
+    }
+
+    #[test]
+    fn test_validity_check() {
+        let solvable = Equation {
+            result: 3267,
+            input: vec![81, 40, 27],
+        };
+        let solvable_with_cat = Equation {
+            result: 156,
+            input: vec![15, 6],
+        };
+        let unsolvable = Equation {
+            result: 21037,
+            input: vec![9, 7, 18, 13],
+        };
+        assert!(equation_is_valid(&solvable));
+        assert!(equation_is_valid(&solvable_with_cat));
+        assert!(!equation_is_valid(&unsolvable));
+    }
+
+    pub fn solve(input: &[Equation]) -> Number {
+        input
+            .iter()
+            .filter(|eq| equation_is_valid(eq))
+            .map(|eq| eq.result)
+            .sum()
+    }
+
+    #[test]
+    fn test_solve() {
+        let input = parse_input(sample_input());
+        assert_eq!(solve(&input), 11387);
+    }
 }
 
 fn main() {
     let input = parse_input(str::from_utf8(include_bytes!("input.txt")).unwrap());
-    println!("day 07 part 1: {}", part1(&input));
+    println!("day 07 part 1: {}", part1::solve(&input));
+    println!("day 07 part 2: {}", part2::solve(&input));
 }
