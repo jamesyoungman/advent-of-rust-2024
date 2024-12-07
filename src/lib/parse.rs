@@ -1,8 +1,13 @@
-pub fn parse_number(s: &str) -> i32 {
+use std::str::FromStr;
+
+pub fn parse_number<T>(s: &str) -> T
+where
+    T: FromStr,
+{
     match s.trim().parse() {
         Ok(n) => n,
-        Err(e) => {
-            panic!("failed to parse '{s}' as a number: {e}");
+        Err(_) => {
+            panic!("failed to parse '{s}' as a number");
         }
     }
 }
