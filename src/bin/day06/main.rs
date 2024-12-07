@@ -84,14 +84,14 @@ impl Grid {
 
     fn patrol(&mut self) -> PatrolOutcome {
         while self.inbounds(&self.guard.pos) {
-            if self.visited.contains(&self.guard) {
-                return PatrolOutcome::InfiniteLoop;
-            }
             self.visited.insert(self.guard);
             let next = self.guard.pos.move_direction(&self.guard.orientation);
             match self.get(&next) {
                 Some('#' | 'O') => {
                     self.guard.orientation = self.guard.orientation.rotated_clockwise();
+                    if self.visited.contains(&self.guard) {
+                        return PatrolOutcome::InfiniteLoop;
+                    }
                 }
                 _ => {
                     self.guard.pos = next;
