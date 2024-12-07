@@ -168,12 +168,20 @@ fn eval_step(left: Number, right: Number, op: Operator, limit: Number) -> Option
 /// If the result exceeds limit, stop early.  This is a minor
 /// optimisation arising from the observation that none of the
 /// operations decrease the value of the result.
-fn evaluate(numbers: &[Number], operators: Vec<Operator>, limit: Number) -> Option<Number> {
+fn evaluate<I, T>(numbers: &[Number], operators: I, limit: Number) -> Option<Number>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<Operator>,
+{
     match numbers {
-        [accumulator, tail @ ..] => tail
-            .iter()
-            .zip(operators)
-            .try_fold(*accumulator, |acc, (n, op)| eval_step(acc, *n, op, limit)),
+        [accumulator, tail @ ..] => {
+            tail.iter()
+                .zip(operators.into_iter())
+                .try_fold(*accumulator, |acc, (n, op)| {
+                    let operator: Operator = op.into();
+                    eval_step(acc, *n, operator, limit)
+                })
+        }
         [] => {
             panic!("empty numbers");
         }
@@ -229,8 +237,12 @@ fn test_evaluate_limit() {
     );
 }
 
-fn equation_is_valid_with_these_operators(eq: &Equation, operators: Vec<Operator>) -> bool {
-    match evaluate(&eq.input, operators, eq.result) {
+fn equation_is_valid_with_these_operators<I, T>(eq: &Equation, operators: I) -> bool
+where
+    I: IntoIterator<Item = T>,
+    T: Into<Operator>,
+{
+    match evaluate(&eq.input, operators.into_iter(), eq.result) {
         Some(value) => value == eq.result,
         None => false,
     }
@@ -264,25 +276,35 @@ fn test_validity_check_with_operators() {
 mod part1 {
     use super::*;
 
-    fn make_ops(eq: &Equation, op_seq: u32) -> Vec<Operator> {
-        (0..(eq.input.len()))
-            .map(|bitpos| op_seq & (1 << bitpos) != 0)
-            .map(|use_add| {
-                if use_add {
+    struct OpIt {
+        remaining: usize,
+        bits: u32,
+    }
+
+    impl Iterator for OpIt {
+        type Item = Operator;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            if self.remaining > 0 {
+                let result = if self.bits & 1 == 0 {
                     Operator::Add
                 } else {
                     Operator::Multiply
-                }
-            })
-            .collect()
+                };
+                self.bits >>= 1;
+                self.remaining -= 1;
+                Some(result)
+            } else {
+                None
+            }
+        }
     }
 
     fn equation_is_valid(eq: &Equation) -> bool {
-        let limit = 1u32 << (eq.input.len() - 1);
-        (0..limit).any(|ops| {
-            let operations = make_ops(eq, ops);
-            equation_is_valid_with_these_operators(eq, operations)
-        })
+        let n = eq.input.len() - 1;
+        let limit = 1u32 << n;
+        (0..limit)
+            .any(|bits| equation_is_valid_with_these_operators(eq, OpIt { remaining: n, bits }))
     }
 
     #[test]
@@ -317,16 +339,16 @@ mod part1 {
 mod part2 {
     use super::*;
 
-    struct OpIterator {
+    struct OpSequenceIterator {
         ops: Vec<Operator>,
         saturated: bool,
     }
 
-    impl OpIterator {
-        pub fn new(places: usize) -> OpIterator {
+    impl OpSequenceIterator {
+        pub fn new(places: usize) -> OpSequenceIterator {
             let mut ops = Vec::with_capacity(places);
             ops.resize(places, Operator::Add);
-            OpIterator {
+            OpSequenceIterator {
                 ops,
                 saturated: false,
             }
@@ -349,7 +371,7 @@ mod part2 {
         }
     }
 
-    impl Iterator for OpIterator {
+    impl Iterator for OpSequenceIterator {
         type Item = Vec<Operator>;
 
         fn next(&mut self) -> Option<Vec<Operator>> {
@@ -366,7 +388,7 @@ mod part2 {
     #[test]
     fn test_op_iterator() {
         use Operator::*;
-        let mut it = OpIterator::new(2);
+        let mut it = OpSequenceIterator::new(2);
         assert_eq!(it.next(), Some(vec![Add, Add]));
         assert_eq!(it.next(), Some(vec![Add, Multiply]));
         assert_eq!(it.next(), Some(vec![Add, Concatenate]));
@@ -380,7 +402,7 @@ mod part2 {
     }
 
     fn equation_is_valid(eq: &Equation) -> bool {
-        let mut op_it = OpIterator::new(eq.input.len() - 1);
+        let mut op_it = OpSequenceIterator::new(eq.input.len() - 1);
         op_it.any(|operations| equation_is_valid_with_these_operators(eq, operations))
     }
 
