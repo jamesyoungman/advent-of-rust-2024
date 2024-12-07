@@ -94,11 +94,64 @@ impl Operator {
     }
 }
 
+fn count_places(mut n: Number) -> usize {
+    if n == 0 {
+        1
+    } else {
+        let mut places = 0;
+        while n > 0 {
+            n /= 10;
+            places += 1;
+        }
+        places
+    }
+}
+
+#[test]
+fn test_count_places() {
+    assert_eq!(count_places(1), 1);
+    assert_eq!(count_places(2), 1);
+    assert_eq!(count_places(9), 1);
+    assert_eq!(count_places(10), 2);
+    assert_eq!(count_places(50), 2);
+    assert_eq!(count_places(101), 3);
+}
+
+fn pow10(power: Number) -> Number {
+    (0..power).fold(1, |acc, _| acc * 10)
+}
+
+#[test]
+fn test_pow10() {
+    assert_eq!(pow10(0), 1);
+    assert_eq!(pow10(1), 10);
+    assert_eq!(pow10(2), 100);
+    assert_eq!(pow10(3), 1000);
+}
+
+fn concatenate(left: Number, right: Number) -> Number {
+    let shift10 = count_places(right) as Number;
+    left * pow10(shift10) + right
+}
+
+#[test]
+fn test_concatenate() {
+    assert_eq!(concatenate(0, 0), 0);
+    assert_eq!(concatenate(0, 1), 1);
+    assert_eq!(concatenate(0, 10), 10);
+    assert_eq!(concatenate(1, 1), 11);
+    assert_eq!(concatenate(1, 2), 12);
+    assert_eq!(concatenate(2, 1), 21);
+    assert_eq!(concatenate(9, 9), 99);
+    assert_eq!(concatenate(9, 10), 910);
+    assert_eq!(concatenate(10, 9), 109);
+}
+
 fn eval_step(left: Number, right: Number, op: Operator) -> Number {
     match op {
         Operator::Add => left + right,
         Operator::Multiply => left * right,
-        Operator::Concatenate => parse_number(&format!("{left}{right}")),
+        Operator::Concatenate => concatenate(left, right),
     }
 }
 
