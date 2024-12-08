@@ -69,3 +69,32 @@ fn test_sum_result_propagate_error() {
         .try_fold(0_i64, sum_result);
     assert!(matches!(total, Err(_)), "{total:?}");
 }
+
+/// Returns all pairs generatable from the input slice.
+pub fn all_pairs<T>(v: &[T]) -> impl Iterator<Item = (&T, &T)> + use<'_, T> {
+    v.iter()
+        .enumerate()
+        .flat_map(|(i, right)| v[0..i].iter().map(move |left| (left, right)))
+}
+
+#[test]
+fn test_all_pairs_nocopy() {
+    #[derive(Eq, PartialEq, Debug)]
+    struct NoCopy {}
+
+    assert_eq!(all_pairs::<NoCopy>(&[]).collect::<Vec<_>>(), Vec::new());
+}
+
+#[test]
+fn test_all_pairs() {
+    assert_eq!(all_pairs::<char>(&[]).collect::<Vec<_>>(), Vec::new());
+
+    assert_eq!(
+        all_pairs(&['a', 'b']).collect::<Vec<_>>(),
+        vec![(&'a', &'b')]
+    );
+    assert_eq!(
+        all_pairs(&['a', 'b', 'c']).collect::<Vec<_>>(),
+        vec![(&'a', &'b'), (&'a', &'c'), (&'b', &'c')]
+    );
+}

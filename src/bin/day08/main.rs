@@ -5,6 +5,7 @@ use std::fmt::{Display, Write};
 use std::str;
 
 use lib::grid::{BoundingBox, Movement, Position};
+use lib::iterplus::all_pairs;
 
 struct World {
     w: i64,
@@ -45,28 +46,6 @@ fn parse_input(input: &str) -> World {
     }
 }
 
-/// Returns all pairs generatable from the input slice.
-fn all_pairs<T>(v: &[T]) -> impl Iterator<Item = (T, T)> + use<'_, T>
-where
-    T: Copy,
-{
-    v.iter()
-        .enumerate()
-        .flat_map(|(i, right)| v[0..i].iter().map(|left| (*left, *right)))
-}
-
-#[test]
-fn test_all_pairs() {
-    assert_eq!(all_pairs::<char>(&[]).collect::<Vec<_>>(), Vec::new());
-    assert_eq!(all_pairs::<Position>(&[]).collect::<Vec<_>>(), Vec::new());
-
-    assert_eq!(all_pairs(&['a', 'b']).collect::<Vec<_>>(), vec![('a', 'b')]);
-    assert_eq!(
-        all_pairs(&['a', 'b', 'c']).collect::<Vec<_>>(),
-        vec![('a', 'b'), ('a', 'c'), ('b', 'c')]
-    );
-}
-
 impl World {
     /// Returns the locations of all antennas in the world
     fn antenna_markers(&self) -> impl Iterator<Item = (Position, char)> + use<'_> {
@@ -100,7 +79,7 @@ impl World {
         let bounds = self.bounding_box();
         self.antennas.iter().flat_map(move |(_, positions)| {
             all_pairs(positions).flat_map(move |(p1, p2)| {
-                compute_antinodes(p1, p2, min_multiplier, max_multiplier, bounds)
+                compute_antinodes(*p1, *p2, min_multiplier, max_multiplier, bounds)
             })
         })
     }
