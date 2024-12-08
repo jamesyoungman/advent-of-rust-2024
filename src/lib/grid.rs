@@ -175,6 +175,12 @@ impl BoundingBox {
         }
     }
 
+    pub fn from_corners(p1: &Position, p2: &Position) -> BoundingBox {
+        let mut b = BoundingBox::new(p1);
+        b.update(p2);
+        b
+    }
+
     pub fn columns(&self) -> impl Iterator<Item = i64> + Clone {
         self.top_left.x..=self.bottom_right.x
     }

@@ -4,7 +4,7 @@ use std::fmt::Formatter;
 use std::fmt::{Display, Write};
 use std::str;
 
-use lib::grid::Position;
+use lib::grid::{BoundingBox, Movement, Position};
 
 struct World {
     w: i64,
@@ -74,17 +74,30 @@ impl World {
             .flat_map(|(marker, locations)| locations.iter().map(|loc| (*loc, *marker)))
     }
 
-    fn inbounds(&self, pos: &Position) -> bool {
-        pos.x >= 0 && pos.x < self.w && pos.y >= 0 && pos.y < self.h
+    fn bounding_box(&self) -> BoundingBox {
+        let result = BoundingBox::from_corners(
+            &Position { x: 0, y: 0 },
+            &Position {
+                x: self.w - 1,
+                y: self.h - 1,
+            },
+        );
+        assert_eq!(result.width(), self.w);
+        assert_eq!(result.height(), self.h);
+        result
     }
 
-    fn antinodes(&self) -> impl Iterator<Item = Antinode> + use<'_> {
-        self.antennas
-            .iter()
-            .flat_map(|(label, positions)| {
-                all_pairs(positions).flat_map(|(p1, p2)| compute_antinodes(*label, &p1, &p2))
+    fn antinodes(
+        &self,
+        min_multiplier: i64,
+        max_multiplier: Option<i64>,
+    ) -> impl Iterator<Item = Antinode> + use<'_> {
+        let bounds = self.bounding_box();
+        self.antennas.iter().flat_map(move |(label, positions)| {
+            all_pairs(positions).flat_map(move |(p1, p2)| {
+                compute_antinodes(*label, p1, p2, min_multiplier, max_multiplier, bounds)
             })
-            .filter(|antinode| self.inbounds(&antinode.location))
+        })
     }
 }
 
@@ -94,37 +107,68 @@ struct Antinode {
     location: Position,
 }
 
-fn compute_antinodes(label: char, p1: &Position, p2: &Position) -> [Antinode; 2] {
+fn in_bounds_antinodes<'a>(
+    label: char,
+    p1: Position,
+    delta: Movement,
+    bounds: BoundingBox,
+    sign: i64,
+    min_multiplier: i64,
+    max_multiplier: Option<i64>,
+) -> impl Iterator<Item = Antinode> + use<'a> {
+    (min_multiplier..)
+        .take_while(move |multiplier| match max_multiplier {
+            None => true,
+            Some(n) => *multiplier <= n,
+        })
+        .map(move |multiplier| {
+            let m: i64 = multiplier * sign;
+            Antinode {
+                label,
+                location: p1 - (delta * m),
+            }
+        })
+        .take_while(move |antinode| bounds.contains(&antinode.location))
+}
+
+fn compute_antinodes<'a>(
+    label: char,
+    p1: Position,
+    p2: Position,
+    min_multiplier: i64,
+    max_multiplier: Option<i64>,
+    bounds: BoundingBox,
+) -> impl Iterator<Item = Antinode> + 'a {
     assert!(p1 != p2);
     let delta = p2 - p1;
-    [
-        Antinode {
-            label,
-            location: p1 - &delta,
-        },
-        Antinode {
-            label,
-            location: p2 + &delta,
-        },
-    ]
+    in_bounds_antinodes(label, p1, delta, bounds, 1, min_multiplier, max_multiplier).chain(
+        in_bounds_antinodes(label, p2, delta, bounds, -1, min_multiplier, max_multiplier),
+    )
 }
 
 #[test]
-fn test_compute_antinodes() {
-    let computed_antinodes: HashSet<Antinode> =
-        compute_antinodes('0', &Position { x: 8, y: 1 }, &Position { x: 5, y: 2 }).into();
-    let expected_antinoides: HashSet<Antinode> = [
-        Antinode {
-            label: '0',
-            location: Position { x: 11, y: 0 },
-        },
-        Antinode {
-            label: '0',
-            location: Position { x: 2, y: 3 },
-        },
-    ]
-    .into();
-    assert_eq!(computed_antinodes, expected_antinoides);
+fn test_compute_antinodes_part1() {
+    let bounds = BoundingBox::from_corners(&Position { x: 0, y: 0 }, &Position { x: 12, y: 5 });
+    let got: HashSet<Antinode> = compute_antinodes(
+        '0',
+        Position { x: 8, y: 1 },
+        Position { x: 5, y: 2 },
+        1,
+        Some(1),
+        bounds,
+    )
+    .map(|a: Antinode| a)
+    .collect();
+    dbg!(&got);
+    assert_eq!(got.len(), 2);
+    assert!(got.contains(&Antinode {
+        label: '0',
+        location: Position { x: 11, y: 0 },
+    }));
+    assert!(got.contains(&Antinode {
+        label: '0',
+        location: Position { x: 2, y: 3 },
+    }));
 }
 
 impl Display for World {
@@ -160,7 +204,7 @@ fn sample_input() -> &'static str {
 }
 
 #[cfg(test)]
-fn antinodes_for_sample_input() -> &'static str {
+fn part1_antinodes_for_sample_input() -> &'static str {
     concat!(
         "......#....#\n",
         "...#....0...\n",
@@ -174,6 +218,24 @@ fn antinodes_for_sample_input() -> &'static str {
         ".........A..\n",
         "..........#.\n",
         "..........#.\n"
+    )
+}
+
+#[cfg(test)]
+fn part2_antinodes_for_sample_input() -> &'static str {
+    concat!(
+        "##....#....#\n",
+        ".#.#....0...\n",
+        "..#.#0....#.\n",
+        "..##...0....\n",
+        "....0....#..\n",
+        ".#...#A....#\n",
+        "...#..#.....\n",
+        "#....#.#....\n",
+        "..#.....A...\n",
+        "....#....A..\n",
+        ".#........#.\n",
+        "...#......##\n",
     )
 }
 
@@ -220,23 +282,27 @@ fn display_antinodes<W: Write>(
 }
 
 #[test]
-fn test_display_antinodes() {
+fn test_display_antinodes_part1() {
     let world = parse_input(sample_input());
-    let antinodes: HashSet<Antinode> = world.antinodes().collect();
+    let antinodes: HashSet<Antinode> = world.antinodes(1, Some(1)).collect();
     let mut displayed_antinodes = String::new();
     display_antinodes(&mut displayed_antinodes, &world, &antinodes)
         .expect("writes to String should always succeed");
-    let expected = antinodes_for_sample_input();
+    let expected = part1_antinodes_for_sample_input();
     println!("expected:\n{expected}\ngot:\n{displayed_antinodes}");
     assert_eq!(displayed_antinodes, expected);
 }
 
-fn part1(world: &World) -> usize {
+fn solve(world: &World, min_multiplier: i64, max_multiplier: Option<i64>) -> usize {
     let distinct_positions: HashSet<Position> = world
-        .antinodes()
+        .antinodes(min_multiplier, max_multiplier)
         .map(|antinode| antinode.location)
         .collect();
     distinct_positions.len()
+}
+
+fn part1(world: &World) -> usize {
+    solve(world, 1, Some(1))
 }
 
 #[test]
@@ -245,8 +311,31 @@ fn test_part1() {
     assert_eq!(part1(&world), 14);
 }
 
+#[test]
+fn test_display_antinodes_part2() {
+    let world = parse_input(sample_input());
+    let antinodes: HashSet<Antinode> = world.antinodes(0, None).collect();
+    let mut displayed_antinodes = String::new();
+    display_antinodes(&mut displayed_antinodes, &world, &antinodes)
+        .expect("writes to String should always succeed");
+    let expected = part2_antinodes_for_sample_input();
+    println!("expected:\n{expected}\ngot:\n{displayed_antinodes}");
+    assert_eq!(displayed_antinodes, expected);
+}
+
+fn part2(world: &World) -> usize {
+    solve(world, 0, None)
+}
+
+#[test]
+fn test_part2() {
+    let world = parse_input(sample_input());
+    assert_eq!(part2(&world), 34);
+}
+
 fn main() {
     let input = str::from_utf8(include_bytes!("input.txt")).unwrap();
     let world = parse_input(input);
     println!("day 08 part 1: {}", part1(&world));
+    println!("day 08 part 2: {}", part2(&world));
 }
