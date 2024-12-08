@@ -45,6 +45,7 @@ fn parse_input(input: &str) -> World {
     }
 }
 
+/// Returns all pairs generatable from the input slice.
 fn all_pairs<T>(v: &[T]) -> impl Iterator<Item = (T, T)> + use<'_, T>
 where
     T: Copy,
@@ -68,12 +69,14 @@ fn test_all_pairs() {
 }
 
 impl World {
-    fn markers(&self) -> impl Iterator<Item = (Position, char)> + use<'_> {
+    /// Returns the locations of all antennas in the world
+    fn antenna_markers(&self) -> impl Iterator<Item = (Position, char)> + use<'_> {
         self.antennas
             .iter()
             .flat_map(|(marker, locations)| locations.iter().map(|loc| (*loc, *marker)))
     }
 
+    /// Returns a bounding box corresponding to the size of the world.
     fn bounding_box(&self) -> BoundingBox {
         let result = BoundingBox::from_corners(
             &Position { x: 0, y: 0 },
@@ -87,6 +90,9 @@ impl World {
         result
     }
 
+    /// Compute the antinodes of all antennas, obeying the min and max
+    /// limits on the distance between an antenna and its antinode
+    /// (which varies between part 1 and part 2 of the problem).
     fn antinodes(
         &self,
         min_multiplier: i64,
@@ -107,30 +113,10 @@ struct Antinode {
     location: Position,
 }
 
-fn in_bounds_antinodes<'a>(
-    label: char,
-    p1: Position,
-    delta: Movement,
-    bounds: BoundingBox,
-    sign: i64,
-    min_multiplier: i64,
-    max_multiplier: Option<i64>,
-) -> impl Iterator<Item = Antinode> + use<'a> {
-    (min_multiplier..)
-        .take_while(move |multiplier| match max_multiplier {
-            None => true,
-            Some(n) => *multiplier <= n,
-        })
-        .map(move |multiplier| {
-            let m: i64 = multiplier * sign;
-            Antinode {
-                label,
-                location: p1 - (delta * m),
-            }
-        })
-        .take_while(move |antinode| bounds.contains(&antinode.location))
-}
-
+/// Compute all antinodes for a pair of antennae at the specified
+/// positions, obeying the min and max limits on the distance between
+/// an antenna and its antinode (which varies between part 1 and part
+/// 2 of the problem).
 fn compute_antinodes<'a>(
     label: char,
     p1: Position,
@@ -139,8 +125,35 @@ fn compute_antinodes<'a>(
     max_multiplier: Option<i64>,
     bounds: BoundingBox,
 ) -> impl Iterator<Item = Antinode> + 'a {
+    fn in_bounds_antinodes<'a>(
+        label: char,
+        p1: Position,
+        delta: Movement,
+        bounds: BoundingBox,
+        sign: i64,
+        min_multiplier: i64,
+        max_multiplier: Option<i64>,
+    ) -> impl Iterator<Item = Antinode> + use<'a> {
+        (min_multiplier..)
+            .take_while(move |multiplier| match max_multiplier {
+                None => true,
+                Some(n) => *multiplier <= n,
+            })
+            .map(move |multiplier| {
+                let m: i64 = multiplier * sign;
+                Antinode {
+                    label,
+                    location: p1 - (delta * m),
+                }
+            })
+            .take_while(move |antinode| bounds.contains(&antinode.location))
+    }
+
     assert!(p1 != p2);
     let delta = p2 - p1;
+    // We don't zip the iterators together because in general there
+    // will be more antinodes one one side than the other (because the
+    // antennae will not be equidistant from their closest edge).
     in_bounds_antinodes(label, p1, delta, bounds, 1, min_multiplier, max_multiplier).chain(
         in_bounds_antinodes(label, p2, delta, bounds, -1, min_multiplier, max_multiplier),
     )
@@ -173,7 +186,7 @@ fn test_compute_antinodes_part1() {
 
 impl Display for World {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        let markers: HashMap<Position, char> = self.markers().collect();
+        let markers: HashMap<Position, char> = self.antenna_markers().collect();
         for y in 0..self.h {
             for x in 0..self.w {
                 let here = Position { x, y };
@@ -253,7 +266,7 @@ fn display_antinodes<W: Write>(
     world: &World,
     antinodes: &HashSet<Antinode>,
 ) -> Result<(), std::fmt::Error> {
-    let base_markers: HashMap<Position, char> = world.markers().collect();
+    let base_markers: HashMap<Position, char> = world.antenna_markers().collect();
     let antinode_locations: HashSet<Position> =
         antinodes.iter().map(|antinode| antinode.location).collect();
     for y in 0..world.h {
@@ -293,6 +306,9 @@ fn test_display_antinodes_part1() {
     assert_eq!(displayed_antinodes, expected);
 }
 
+/// Count the distinct antinode positions, obeying the min and max
+/// limits on antinode positioning (which varies between part 1 and
+/// part 2).
 fn solve(world: &World, min_multiplier: i64, max_multiplier: Option<i64>) -> usize {
     let distinct_positions: HashSet<Position> = world
         .antinodes(min_multiplier, max_multiplier)
