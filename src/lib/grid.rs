@@ -1,5 +1,6 @@
 use std::cmp::{max, min};
 use std::fmt::{self, Debug, Display, Formatter, Write};
+use std::ops::{Add, Mul, Sub};
 
 use itertools::Itertools;
 
@@ -331,4 +332,149 @@ fn test_manhattan() {
         manhattan(&Position { x: 1, y: -2 }, &Position { x: 12, y: 7 }),
         11 + 9
     );
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Movement {
+    pub dx: i64,
+    pub dy: i64,
+}
+
+impl Debug for Movement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Movement{{dx:{},dy:{}}}", self.dx, self.dy)
+    }
+}
+
+impl Add for Movement {
+    type Output = Movement;
+    fn add(self, rhs: Movement) -> Self::Output {
+        Movement {
+            dx: self.dx + rhs.dx,
+            dy: self.dy + rhs.dy,
+        }
+    }
+}
+
+#[test]
+fn test_movement_addition() {
+    let d1 = Movement { dx: -8, dy: 9 };
+    let d2 = Movement { dx: 8, dy: 5 };
+    assert_eq!(d1 + d2, Movement { dx: 0, dy: 14 })
+}
+
+impl Sub for Movement {
+    type Output = Movement;
+    fn sub(self, rhs: Movement) -> Self::Output {
+        Movement {
+            dx: self.dx - rhs.dx,
+            dy: self.dy - rhs.dy,
+        }
+    }
+}
+
+#[test]
+fn test_movement_subtraction() {
+    let d1 = Movement { dx: -8, dy: 9 };
+    let d2 = Movement { dx: 8, dy: 5 };
+    assert_eq!(d1 - d2, Movement { dx: -16, dy: 4 })
+}
+
+impl Mul<i64> for &Movement {
+    type Output = Movement;
+    fn mul(self, rhs: i64) -> Self::Output {
+        Movement {
+            dx: self.dx * rhs,
+            dy: self.dy * rhs,
+        }
+    }
+}
+
+impl Mul<i64> for Movement {
+    type Output = Movement;
+    fn mul(self, rhs: i64) -> Self::Output {
+        (&self).mul(rhs)
+    }
+}
+
+#[test]
+fn test_movement_multiplication() {
+    let d = Movement { dx: -8, dy: 9 };
+    assert_eq!(d * 2, Movement { dx: -16, dy: 18 })
+}
+
+impl Sub for &Position {
+    type Output = Movement;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Movement {
+            dx: self.x - rhs.x,
+            dy: self.y - rhs.y,
+        }
+    }
+}
+
+impl Sub for Position {
+    type Output = Movement;
+    fn sub(self, rhs: Self) -> Self::Output {
+        (&self).sub(&rhs)
+    }
+}
+
+#[test]
+fn test_position_subtraction() {
+    let p1 = Position { x: 5, y: 10 };
+    let p2 = Position { x: 13, y: 1 };
+    let expected_delta = Movement { dx: -8, dy: 9 };
+    assert_eq!(p1 - p2, expected_delta);
+}
+
+impl Add<&Movement> for &Position {
+    type Output = Position;
+    fn add(self, rhs: &Movement) -> Self::Output {
+        Position {
+            x: self.x + rhs.dx,
+            y: self.y + rhs.dy,
+        }
+    }
+}
+
+impl Add<Movement> for Position {
+    type Output = Position;
+    fn add(self, rhs: Movement) -> Self::Output {
+        (&self).add(&rhs)
+    }
+}
+
+#[test]
+fn test_position_addition() {
+    let p1 = Position { x: 5, y: 10 };
+    let delta = Movement { dx: -8, dy: 9 };
+    assert_eq!(p1 + delta, Position { x: -3, y: 19 })
+}
+
+impl Sub<&Movement> for &Position {
+    type Output = Position;
+    fn sub(self, rhs: &Movement) -> Self::Output {
+        Position {
+            x: self.x - rhs.dx,
+            y: self.y - rhs.dy,
+        }
+    }
+}
+
+impl Sub<Movement> for Position {
+    type Output = Position;
+    fn sub(self, rhs: Movement) -> Self::Output {
+        (&self).sub(&rhs)
+    }
+}
+
+#[test]
+fn test_position_movement_subtraction() {
+    let p1 = Position { x: 5, y: 10 };
+    let delta = Movement { dx: -8, dy: 9 };
+    let expected = Position { x: 13, y: 1 };
+    assert_eq!(&p1 - &delta, expected);
+    assert_eq!(p1 - delta, expected);
 }
