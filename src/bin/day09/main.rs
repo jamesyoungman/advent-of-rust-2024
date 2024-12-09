@@ -1,11 +1,11 @@
 use std::cmp::min;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Write};
 use std::str;
 
 /// Extent represents part of a file, followed by zero or more blocks
 /// of empty space.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 struct Extent {
     /// The id of the file which owns this extent.
     file_id: u32,
@@ -19,7 +19,7 @@ impl Extent {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 struct DiskMap {
     extents: BTreeMap<u32, Extent>,
 }
@@ -198,6 +198,32 @@ impl DiskMap {
         DiskMap { extents: result }
     }
 
+    fn compact_part2(mut self) -> DiskMap {
+        let mut result = BTreeMap::new();
+        let mut frozen_files: BTreeSet<u32> = BTreeSet::new();
+        while let Some((highest_pos, mut highest)) = self.extents.pop_last() {
+            if frozen_files.contains(&highest.file_id) {
+                result.insert(highest_pos, highest);
+                continue;
+            }
+            if let Some((insert_after_pos, insert_after)) = self
+                .extents
+                .iter_mut()
+                .find(|(_, extent)| extent.following_space >= highest.len)
+            {
+                let new_pos = insert_after_pos + insert_after.len;
+                highest.following_space = insert_after.following_space - highest.len;
+                frozen_files.insert(highest.file_id); // because it's already been moved
+                insert_after.following_space = 0;
+                self.extents.insert(new_pos, highest);
+            } else {
+                // There is no place to put `highest`.  Keep the current location;
+                result.insert(highest_pos, highest);
+            }
+        }
+        DiskMap { extents: result }
+    }
+
     fn checksum(&self) -> u64 {
         fn term((pos, extent_id): (u32, u32)) -> u64 {
             (pos as u64) * (extent_id as u64)
@@ -371,6 +397,20 @@ fn test_compact_2333133121414131402_part1() {
 }
 
 #[test]
+fn test_compact_2333133121414131402_part2() {
+    let disk = parse_input(sample_input());
+    assert_eq!(
+        disk.to_string(),
+        "00...111...2...333.44.5555.6666.777.888899"
+    );
+    let compacted = disk.compact_part2();
+    assert_eq!(
+        compacted.to_string(),
+        "00992111777.44.333....5555.6666.....8888"
+    );
+}
+
+#[test]
 fn test_disk_checksum() {
     let disk = DiskMap::from_iter([
         (
@@ -410,14 +450,25 @@ fn part1(disk: DiskMap) -> u64 {
     disk.compact_part1().checksum()
 }
 
+fn part2(disk: DiskMap) -> u64 {
+    disk.compact_part2().checksum()
+}
+
 #[test]
 fn test_part1() {
     let disk = parse_input(sample_input());
     assert_eq!(part1(disk), 1928);
 }
 
+#[test]
+fn test_part2() {
+    let disk = parse_input(sample_input());
+    assert_eq!(part2(disk), 2858);
+}
+
 fn main() {
     let input = str::from_utf8(include_bytes!("input.txt")).unwrap();
     let disk = parse_input(input);
-    println!("day 09 part 1: {}", part1(disk));
+    println!("day 09 part 1: {}", part1(disk.clone()));
+    println!("day 09 part 2: {}", part2(disk));
 }
