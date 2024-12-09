@@ -6,6 +6,9 @@ authors = ["James Youngman <james@youngman.org>"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[profile.release]
+debug = true
+
 [dependencies]
 clap = "4"
 itertools = "0.13"

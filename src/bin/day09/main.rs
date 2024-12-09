@@ -202,14 +202,15 @@ impl DiskMap {
         let mut result = BTreeMap::new();
         let mut frozen_files: BTreeSet<u32> = BTreeSet::new();
         while let Some((highest_pos, mut highest)) = self.extents.pop_last() {
+            fn fit((_, extent): &(&u32, &mut Extent), size_requirement: u32) -> bool {
+                extent.following_space >= size_requirement
+            }
             if frozen_files.contains(&highest.file_id) {
                 result.insert(highest_pos, highest);
                 continue;
             }
-            if let Some((insert_after_pos, insert_after)) = self
-                .extents
-                .iter_mut()
-                .find(|(_, extent)| extent.following_space >= highest.len)
+            if let Some((insert_after_pos, insert_after)) =
+                self.extents.iter_mut().find(|item| fit(item, highest.len))
             {
                 let new_pos = insert_after_pos + insert_after.len;
                 highest.following_space = insert_after.following_space - highest.len;
