@@ -70,7 +70,7 @@ impl World {
             .iter()
             .filter(move |_| h > 0)
             .map(move |direction| pos.move_direction(direction))
-            .filter(|pos| self.inbounds(&pos))
+            .filter(|pos| self.inbounds(pos))
             .filter(move |neighbour_pos| {
                 let neighbour_height = self.height_of(neighbour_pos);
                 neighbour_height == height_wanted
@@ -82,12 +82,7 @@ impl World {
     }
 
     fn scan(&self) -> impl Iterator<Item = Position> + use<'_> {
-        (0..self.h).flat_map(|y| {
-            (0..self.w).map(move |x| Position {
-                x: x as i64,
-                y: y as i64,
-            })
-        })
+        (0..self.h).flat_map(|y| (0..self.w).map(move |x| Position { x, y }))
     }
 
     fn summits(&self) -> Vec<Position> {
