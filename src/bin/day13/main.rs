@@ -10,41 +10,56 @@ struct AxisPuzzle {
     t: i64, // the prize's location
 }
 
-impl AxisPuzzle {
-    fn is_satisfying_combination(&self, na: i64, nb: i64) -> bool {
-        self.a * na + self.b * nb == self.t
-    }
-
-    /// We want solutions of the form (na)*a+(nb)*b = t
-    /// where all variables are integers.
-    fn cheapest_single_axis_satisfying_combination<F>(&self, filter: F) -> Option<(i64, i64)>
-    where
-        F: Fn(i64, i64) -> bool,
-    {
-        // Button A is more expensive, so we want to minimise nb (the
-        // number of times we press button A).
-        for na in 0..=100 {
-            let a_contrib = na * self.a;
-            if a_contrib > self.t {
-                break;
-            }
-            let b_contrib = self.t - a_contrib;
-            if b_contrib % self.b != 0 {
-                continue;
-            }
-            let nb = b_contrib / self.b;
-            if filter(na, nb) {
-                return Some((na, nb));
-            }
-        }
-        None
-    }
-}
-
 #[derive(Debug, Clone, Eq, PartialEq)]
 struct Puzzle {
     x: AxisPuzzle,
     y: AxisPuzzle,
+}
+
+impl Puzzle {
+    // Suppose we have a system of equations:
+    //
+    // a1*x + b1*y = c1
+    // a2*x + b2*y = c2
+    //
+    // Then by Cramer's rule,
+    //
+    // x=(c1*b2-b1*c2)/(a1*b2-b1*a2)
+    // y=(a1*c2-c1*a1)/(a1*b2-b1*a2)
+    //
+    // We can use this to solve an instance of `Puzzle`.
+    //
+    fn solve(&self) -> Option<(i64, i64)> {
+        fn solve_by_cramer_method(
+            a1: i64,
+            b1: i64,
+            c1: i64,
+            a2: i64,
+            b2: i64,
+            c2: i64,
+        ) -> Option<(i64, i64)> {
+            let denominator = a1 * b2 - b1 * a2;
+            if denominator == 0 {
+                None
+            } else {
+                let x = (c1 * b2 - b1 * c2) / denominator;
+                let y = (a1 * c2 - c1 * a2) / denominator;
+                if a1 * x + b1 * y == c1 && a2 * x + b2 * y == c2 {
+                    Some((x, y))
+                } else {
+                    None
+                }
+            }
+        }
+
+        // In our case, our system of equations is:
+        //
+        // self.x.a*na + self.x.b*nb = self.x.t
+        // self.y.a*na + self.y.b*nb = self.y.t
+        //
+        // Hence the solution is returned as (na, nb).
+        solve_by_cramer_method(self.x.a, self.x.b, self.x.t, self.y.a, self.y.b, self.y.t)
+    }
 }
 
 fn puzzle_cost(na: i64, nb: i64) -> i64 {
@@ -147,40 +162,8 @@ fn sample_input() -> &'static str {
 }
 
 mod part1 {
+    #[cfg(test)]
     use super::*;
-
-    fn cheapest_two_axis_satisfying_combination(p: &Puzzle) -> Option<(i64, i64)> {
-        let y_axis_is_good = |na: i64, nb: i64| -> bool { p.y.is_satisfying_combination(na, nb) };
-        p.x.cheapest_single_axis_satisfying_combination(y_axis_is_good)
-    }
-
-    #[test]
-    fn test_cheapest_satisfying_combination() {
-        let samples = sample_puzzles();
-        // Puzzle 1
-        assert_eq!(
-            cheapest_two_axis_satisfying_combination(&samples[0]),
-            Some((80, 40))
-        );
-        // Puzzle 2
-        assert_eq!(cheapest_two_axis_satisfying_combination(&samples[1]), None);
-        // Puzzle 3
-        assert_eq!(
-            cheapest_two_axis_satisfying_combination(&samples[2]),
-            Some((38, 86))
-        );
-        // Puzzle 4
-        assert_eq!(cheapest_two_axis_satisfying_combination(&samples[3]), None);
-    }
-
-    pub fn solve(puzzles: &[Puzzle]) -> i64 {
-        puzzles
-            .iter()
-            .filter_map(cheapest_two_axis_satisfying_combination)
-            .map(|(na, nb)| puzzle_cost(na, nb))
-            .sum()
-    }
-
     #[cfg(test)]
     fn sample_puzzles() -> [Puzzle; 4] {
         [
@@ -349,9 +332,19 @@ mod part2 {
     }
 }
 
+fn solve(puzzles: &[Puzzle]) -> i64 {
+    puzzles
+        .iter()
+        .filter_map(|puzzle| puzzle.solve())
+        .map(|(na, nb)| puzzle_cost(na, nb))
+        .sum()
+}
+
 fn main() {
     let input_str = str::from_utf8(include_bytes!("input.txt")).unwrap();
     let part1_input = parse_input(input_str);
-    println!("day 13 part 1: {}", part1::solve(&part1_input));
-    let _part2_input = part2::apply_part2_correction(part1_input.clone());
+    println!("day 13 part 1: {}", solve(&part1_input));
+
+    let part2_input = part2::apply_part2_correction(part1_input.clone());
+    println!("day 13 part 2: {}", solve(&part2_input));
 }
