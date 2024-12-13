@@ -41,20 +41,6 @@ fn sample_input_1() -> &'static str {
     )
 }
 
-#[cfg(test)]
-fn sample_input_2() -> &'static str {
-    concat!(
-        "89010123\n",
-        "78121874\n",
-        "87430965\n",
-        "96549874\n",
-        "45678903\n",
-        "32019012\n",
-        "01329801\n",
-        "10456732\n",
-    )
-}
-
 #[test]
 fn test_parse_world_1() {
     assert_eq!(
