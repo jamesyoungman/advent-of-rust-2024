@@ -328,21 +328,12 @@ fn test_part1() {
 
 fn part2(robots: &[Robot], w: i64, h: i64) {
     let mut positions: Vec<Position> = robots.iter().map(|r| r.initial_position).collect();
-    let mut seen: HashMap<Vec<Position>, i64> = HashMap::new();
-    // The upper limit on the loop here is a guess at an upper limit
-    // of how many images of non-trees I think Eric is happy to let
-    // people scan through.
-    for time in 0..50_000 {
+    for time in 0..(w * h + 1) {
         let updated_positions: Vec<Position> = next_robot_positions(robots, &positions, w, h);
         let hit = maybe_xmas_tree(updated_positions.iter().copied());
         if hit {
             let pic = draw_positions(updated_positions.iter().copied());
             println!("possible tree at time {time}:\n{pic}");
-        }
-
-        if let Some(prev) = seen.insert(updated_positions.clone(), time) {
-            println!("loop at time={time} - same as time {prev}");
-            break;
         }
         positions = updated_positions;
     }
