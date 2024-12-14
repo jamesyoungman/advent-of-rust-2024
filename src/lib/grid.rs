@@ -244,6 +244,35 @@ impl BoundingBox {
             && self.bottom_right.x >= pos.x
             && self.bottom_right.y >= pos.y
     }
+
+    pub fn containing<'a, I: Iterator<Item = &'a Position>>(positions: I) -> Option<BoundingBox> {
+        positions.fold(None, |bbox, pos| {
+            if let Some(mut bbox) = bbox {
+                bbox.update(pos);
+                Some(bbox)
+            } else {
+                Some(BoundingBox::new(pos))
+            }
+        })
+    }
+}
+
+#[test]
+fn test_bbox_containing_none() {
+    assert_eq!(BoundingBox::containing(Vec::new().into_iter()), None);
+}
+
+#[test]
+fn test_bbox_containing_nonempty() {
+    let got =
+        BoundingBox::containing(vec![Position { x: 4, y: 5 }, Position { x: 10, y: -8 }].iter());
+    assert_eq!(
+        got,
+        Some(BoundingBox {
+            top_left: Position { x: 4, y: -8 },
+            bottom_right: Position { x: 10, y: 5 }
+        })
+    );
 }
 
 #[test]
