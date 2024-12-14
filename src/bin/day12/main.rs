@@ -14,6 +14,17 @@ impl Measurements {
     }
 }
 
+fn count_true_transitions<I>(items: I) -> usize
+where
+    I: Iterator<Item = bool>,
+{
+    fn f((count, prev): (usize, bool), current: bool) -> (usize, bool) {
+        let transition: usize = if current && !prev { 1 } else { 0 };
+        (count + transition, current)
+    }
+    items.fold((0, false), f).0
+}
+
 #[derive(Debug, PartialEq, Eq)]
 struct Plot {
     label: char,
@@ -43,7 +54,39 @@ impl Plot {
             let neighbour_count = neighbours(pos, &self.squares).len();
             perimeter += 4 - neighbour_count;
         }
-        Measurements { area, perimeter }
+        let sides = self.count_sides();
+        Measurements {
+            area,
+            perimeter,
+            sides,
+        }
+    }
+
+    fn attached_edge_count(&self, _pos: &Position) -> usize {
+        let b = self.bbox.inflated_by(1, 1);
+        let western_edges = count_true_transitions(b.columns().map(|x| {
+            b.rows().map(|y| {
+                let left = Position { x, y };
+                let right = Position { x: x + 1, y };
+                !self.squares.contains(&left) && self.squares.contains(&right)
+            })
+        }));
+        let northern_edges = count_true_transitions(b.rows().map(|y| {
+            b.cols().map(|x| {
+                let upper = Position { x, y };
+                let lower = Position { x, y: y + 1 };
+                !self.squares.contains(&upper) && self.squares.contains(&lower)
+            })
+        }));
+        western_edges * 2 + northern_edges * 2
+    }
+
+    fn count_sides(&self) -> usize {
+        self.squares
+            .iter()
+            .map(|pos| self.attached_edge_count(pos))
+            .sum()
+>>>>>>> 1f25d84 (Day 12: still not working.)
     }
 }
 
