@@ -14,16 +14,16 @@ impl Measurements {
     }
 }
 
-fn count_true_transitions<I>(items: I) -> usize
-where
-    I: Iterator<Item = bool>,
-{
-    fn f((count, prev): (usize, bool), current: bool) -> (usize, bool) {
-        let transition: usize = if current && !prev { 1 } else { 0 };
-        (count + transition, current)
-    }
-    items.fold((0, false), f).0
-}
+//fn count_true_transitions<I>(items: I) -> usize
+//where
+//    I: Iterator<Item = bool>,
+//{
+//    fn f((count, prev): (usize, bool), current: bool) -> (usize, bool) {
+//        let transition: usize = if current && !prev { 1 } else { 0 };
+//        (count + transition, current)
+//    }
+//    items.fold((0, false), f).0
+//}
 
 #[derive(Debug, PartialEq, Eq)]
 struct Plot {
@@ -54,39 +54,44 @@ impl Plot {
             let neighbour_count = neighbours(pos, &self.squares).len();
             perimeter += 4 - neighbour_count;
         }
-        let sides = self.count_sides();
-        Measurements {
-            area,
-            perimeter,
-            sides,
-        }
+        //let sides = self.count_sides();
+        Measurements { area, perimeter }
     }
 
-    fn attached_edge_count(&self, _pos: &Position) -> usize {
-        let b = self.bbox.inflated_by(1, 1);
-        let western_edges = count_true_transitions(b.columns().map(|x| {
-            b.rows().map(|y| {
-                let left = Position { x, y };
-                let right = Position { x: x + 1, y };
-                !self.squares.contains(&left) && self.squares.contains(&right)
-            })
-        }));
-        let northern_edges = count_true_transitions(b.rows().map(|y| {
-            b.cols().map(|x| {
-                let upper = Position { x, y };
-                let lower = Position { x, y: y + 1 };
-                !self.squares.contains(&upper) && self.squares.contains(&lower)
-            })
-        }));
-        western_edges * 2 + northern_edges * 2
-    }
+    //fn attached_edge_count(&self, _pos: &Position) -> usize {
+    //    let b = BoundingBox {
+    //        top_left: Position {
+    //            x: self.bbox.top_left.x - 1,
+    //            y: self.bbox.top_left.y - 1,
+    //        },
+    //        bottom_right: Position {
+    //            x: self.bbox.bottom_right.x + 1,
+    //            y: self.bbox.bottom_right.y + 1,
+    //        },
+    //    };
+    //    let western_edges = count_true_transitions(b.columns().flat_map(|x| {
+    //        b.rows().map(move |y| {
+    //            let left = Position { x, y };
+    //            let right = Position { x: x + 1, y };
+    //            !self.squares.contains(&left) && self.squares.contains(&right)
+    //        })
+    //    }));
+    //    let northern_edges = count_true_transitions(b.rows().flat_map(|y| {
+    //        b.columns().map(move |x| {
+    //            let upper = Position { x, y };
+    //            let lower = Position { x, y: y + 1 };
+    //            !self.squares.contains(&upper) && self.squares.contains(&lower)
+    //        })
+    //    }));
+    //    western_edges * 2 + northern_edges * 2
+    //}
 
-    fn count_sides(&self) -> usize {
-        self.squares
-            .iter()
-            .map(|pos| self.attached_edge_count(pos))
-            .sum()
-    }
+    //fn count_sides(&self) -> usize {
+    //    self.squares
+    //        .iter()
+    //        .map(|pos| self.attached_edge_count(pos))
+    //        .sum()
+    //}
 }
 
 fn make_bbox<'a, I: Iterator<Item = &'a Position>>(squares: I) -> Option<BoundingBox> {
