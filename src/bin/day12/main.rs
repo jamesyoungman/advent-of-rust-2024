@@ -86,7 +86,6 @@ impl Plot {
             .iter()
             .map(|pos| self.attached_edge_count(pos))
             .sum()
->>>>>>> 1f25d84 (Day 12: still not working.)
     }
 }
 
