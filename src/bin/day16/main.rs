@@ -200,15 +200,6 @@ const ALL_DIRECTIONS: [CompassDirection; 4] = [
 ];
 
 impl Graph<'_> {
-    fn vertices(&self) -> impl Iterator<Item = Node> + use<'_> {
-        self.world.empty_tiles.iter().flat_map(|&pos| {
-            ALL_DIRECTIONS.iter().map(move |orientation| Node {
-                pos,
-                orientation: *orientation,
-            })
-        })
-    }
-
     fn neighbours(&self, n: &Node) -> Vec<Node> {
         let mut result = Vec::with_capacity(5);
         let pos_after_step = n.pos.move_direction(&n.orientation);
@@ -251,15 +242,6 @@ fn dijkstra(g: &Graph, source: Node) -> ShortestPaths {
         node: source,
     });
 
-    for vertex in g.vertices() {
-        if vertex != source {
-            q.push(PrioritisedNode {
-                priority: Distance::MAX,
-                node: vertex,
-            });
-        }
-    }
-
     let mut count = 0;
     while let Some(u) = q.pop() {
         if count % 1000 == 0 {
@@ -284,36 +266,14 @@ fn dijkstra(g: &Graph, source: Node) -> ShortestPaths {
                         s
                     });
                 dist.insert(v, alt);
-                decrease_priority(&mut q, &v, alt);
+                q.push(PrioritisedNode {
+                    priority: alt,
+                    node: v,
+                });
             }
         }
     }
     ShortestPaths { distances: dist }
-}
-
-fn decrease_priority(q: &mut MinHeap<PrioritisedNode>, v: &Node, distance: i64) {
-    let original_len = q.len();
-    let mut keep: MinHeap<PrioritisedNode> = MinHeap::with_capacity(q.capacity());
-    let mut found = false;
-    while let Some(n) = q.pop() {
-        if &n.node == v {
-            found = true;
-            break;
-        } else {
-            keep.push(n);
-        }
-    }
-    q.push(PrioritisedNode {
-        priority: distance,
-        node: *v,
-    });
-    q.append(&mut keep);
-    assert!(keep.is_empty());
-    if found {
-        assert_eq!(q.len(), original_len);
-    } else {
-        assert_eq!(q.len(), original_len + 1);
-    }
 }
 
 fn find_shortest_paths(world: &World) -> (i64, Vec<Node>, ShortestPaths) {
