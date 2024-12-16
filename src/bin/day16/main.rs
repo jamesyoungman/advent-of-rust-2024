@@ -1,6 +1,6 @@
 use lib::grid::{BoundingBox, CompassDirection, Position};
 use lib::minheap::MinHeap;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt::{Display, Formatter, Write};
 use std::str;
 
@@ -129,7 +129,7 @@ impl From<&str> for World {
 }
 
 #[cfg(test)]
-fn sample_input() -> &'static str {
+fn first_sample_input() -> &'static str {
     concat!(
         "###############\n",
         "#.......#....E#\n",
@@ -149,11 +149,34 @@ fn sample_input() -> &'static str {
     )
 }
 
+#[cfg(test)]
+fn second_sample_input() -> &'static str {
+    concat!(
+        "#################\n",
+        "#...#...#...#..E#\n",
+        "#.#.#.#.#.#.#.#.#\n",
+        "#.#.#.#...#...#.#\n",
+        "#.#.#.#.###.#.#.#\n",
+        "#...#.#.#.....#.#\n",
+        "#.#.#.#.#.#####.#\n",
+        "#.#...#.#.#.....#\n",
+        "#.#.#####.#.###.#\n",
+        "#.#.#.......#...#\n",
+        "#.#.###.#####.###\n",
+        "#.#.#...#.....#.#\n",
+        "#.#.#.#####.###.#\n",
+        "#.#.#.........#.#\n",
+        "#.#.#.#########.#\n",
+        "#S#.............#\n",
+        "#################\n",
+    )
+}
+
 #[test]
 fn parse_and_display() {
-    let world: World = World::from(sample_input());
+    let world: World = World::from(first_sample_input());
     let shown = world.to_string();
-    assert_eq!(shown, sample_input());
+    assert_eq!(shown, first_sample_input());
 }
 
 #[derive(Debug)]
@@ -176,7 +199,7 @@ const ALL_DIRECTIONS: [CompassDirection; 4] = [
     CompassDirection::West,
 ];
 
-impl<'a> Graph<'a> {
+impl Graph<'_> {
     fn vertices(&self) -> impl Iterator<Item = Node> + use<'_> {
         self.world.empty_tiles.iter().flat_map(|&pos| {
             ALL_DIRECTIONS.iter().map(move |orientation| Node {
@@ -198,7 +221,7 @@ impl<'a> Graph<'a> {
         result.extend(
             ALL_DIRECTIONS
                 .iter()
-                .filter(|orientation| is_right_angle(*orientation, &n.orientation))
+                .filter(|orientation| is_right_angle(orientation, &n.orientation))
                 .map(move |orientation| Node {
                     pos: n.pos,
                     orientation: *orientation,
@@ -213,9 +236,13 @@ impl<'a> Graph<'a> {
     }
 }
 
-fn dijkstra(g: &Graph, source: Node) -> (BTreeMap<Node, Distance>, BTreeMap<Node, Node>) {
+struct ShortestPaths {
+    distances: BTreeMap<Node, Distance>,
+}
+
+fn dijkstra(g: &Graph, source: Node) -> ShortestPaths {
     let mut q: MinHeap<PrioritisedNode> = MinHeap::new();
-    let mut prev: BTreeMap<Node, Node> = BTreeMap::new();
+    let mut prev: BTreeMap<Node, BTreeSet<Node>> = BTreeMap::new();
     let mut dist: BTreeMap<Node, Distance> = BTreeMap::new();
 
     dist.insert(source, 0);
@@ -246,14 +273,22 @@ fn dijkstra(g: &Graph, source: Node) -> (BTreeMap<Node, Distance>, BTreeMap<Node
                 .unwrap_or(&Distance::MAX)
                 .saturating_add(cost);
             let dist_v: Distance = *dist.get(&v).unwrap_or(&Distance::MAX);
-            if alt < dist_v {
-                prev.insert(v, u.node);
+            if alt <= dist_v {
+                prev.entry(v)
+                    .and_modify(|entry| {
+                        entry.insert(u.node);
+                    })
+                    .or_insert_with(|| {
+                        let mut s = BTreeSet::new();
+                        s.insert(u.node);
+                        s
+                    });
                 dist.insert(v, alt);
                 decrease_priority(&mut q, &v, alt);
             }
         }
     }
-    (dist, prev)
+    ShortestPaths { distances: dist }
 }
 
 fn decrease_priority(q: &mut MinHeap<PrioritisedNode>, v: &Node, distance: i64) {
@@ -281,62 +316,153 @@ fn decrease_priority(q: &mut MinHeap<PrioritisedNode>, v: &Node, distance: i64) 
     }
 }
 
-fn retrace_path<'a>(finish: &Node, start: &Node, prev: &'a BTreeMap<Node, Node>) -> Vec<&'a Node> {
-    let mut result = Vec::new();
-    let mut current: &Node = finish;
-    while let Some(p) = prev.get(current) {
-        result.push(p);
-        if p == start {
-            return result;
-        }
-        current = p;
-    }
-    panic!("cannot find path back to start");
-}
-
-fn part1(world: &World) -> i64 {
+fn find_shortest_paths(world: &World) -> (i64, Vec<Node>, ShortestPaths) {
     let start = Node {
         pos: world.start,
         orientation: CompassDirection::East,
     };
     let graph = Graph { world };
-    let (dists, preds) = dijkstra(&graph, start);
+    let shortest_paths = dijkstra(&graph, start);
 
-    assert!(dists.contains_key(&start));
+    assert!(shortest_paths.distances.contains_key(&start));
 
-    let final_node: &Node = dists
-        .iter()
-        .filter(|(node, _)| node.pos == world.exit)
-        .map(|(node, dist)| (dist, node))
-        .min()
-        .map(|(_, node)| node)
-        .expect("did not find solution");
-    let distance = match dists.get(&final_node) {
-        Some(d) => d,
-        None => {
-            panic!("don't know distance beween start and finish {final_node:?}");
+    let (final_nodes, mindist): (Vec<Node>, Distance) = {
+        let mut nodes_by_dist: Vec<(Distance, Node)> = shortest_paths
+            .distances
+            .iter()
+            .filter(|(node, _)| node.pos == world.exit)
+            .map(|(node, dist)| (*dist, *node))
+            .collect();
+        nodes_by_dist.sort();
+        match nodes_by_dist.iter().min() {
+            Some(&(mindist, _)) => (
+                nodes_by_dist
+                    .iter()
+                    .take_while(|(dist, _)| *dist == mindist)
+                    .map(|(_, node)| *node)
+                    .collect(),
+                mindist,
+            ),
+            None => {
+                panic!("did not find solution");
+            }
         }
     };
-    //let mut path = retrace_path(final_node, &start, &preds);
-    //path.reverse();
-    *distance
+    (mindist, final_nodes, shortest_paths)
+}
+
+fn find_tiles_on_best_route(
+    world: &World,
+    final_nodes: &[Node],
+    forward_cost: Distance,
+    shortest_paths: &ShortestPaths,
+) -> BTreeSet<Position> {
+    assert_eq!(final_nodes.len(), 1);
+    let final_node = final_nodes
+        .first()
+        .expect("should be at least one final node");
+    let reverse_start_node = Node {
+        pos: final_node.pos,
+        orientation: final_node.orientation.reversed(),
+    };
+    let shortest_reverse_paths = dijkstra(&Graph { world }, reverse_start_node);
+    let best_path: BTreeSet<Position> = shortest_paths
+        .distances
+        .iter()
+        .filter(|(forward_node, forward_dist)| {
+            match shortest_reverse_paths.distances.get(&Node {
+                pos: forward_node.pos,
+                orientation: forward_node.orientation.reversed(),
+            }) {
+                Some(&reverse_dist) => reverse_dist + **forward_dist == forward_cost,
+                None => false,
+            }
+        })
+        .map(|(node, _)| node.pos)
+        .collect();
+    best_path
+}
+
+fn display_best_route<W: std::fmt::Write>(
+    mut writer: W,
+    world: &World,
+    best: &BTreeSet<Position>,
+) -> std::fmt::Result {
+    for y in world.bbox.rows() {
+        for x in world.bbox.columns() {
+            let here = Position { x, y };
+            writer.write_char(if best.contains(&here) {
+                'O'
+            } else if here == world.start {
+                'S'
+            } else if here == world.exit {
+                'E'
+            } else if world.empty_tiles.contains(&here) {
+                '.'
+            } else {
+                '#'
+            })?;
+        }
+        writer.write_char('\n')?;
+    }
+    Ok(())
+}
+
+fn part2(
+    world: &World,
+    final_nodes: &[Node],
+    forward_cost: Distance,
+    shortest_paths: &ShortestPaths,
+) -> usize {
+    let best = find_tiles_on_best_route(world, final_nodes, forward_cost, shortest_paths);
+    let mut s = String::new();
+    let _ = display_best_route(&mut s, world, &best);
+    println!("{s}");
+    best.len()
 }
 
 #[test]
-fn test_part1_simplest_possible() {
+fn test_find_shortest_paths_simplest_possible() {
     let world = World::from(concat!("####\n", "#SE#\n", "####\n",));
-    assert_eq!(part1(&world), 1);
+    let (distance, _final_node, _shortest_paths) = find_shortest_paths(&world);
+    assert_eq!(distance, 1);
 }
 
 #[test]
-fn test_part1() {
-    let world = World::from(sample_input());
-    let cost = part1(&world);
+fn test_find_shortest_paths_first_sample_input() {
+    let world = World::from(first_sample_input());
+    let (cost, _final_node, _shortest_paths) = find_shortest_paths(&world);
     assert_eq!(cost, 7036);
+}
+
+#[test]
+fn test_find_shortest_paths_second_sample_input() {
+    let world = World::from(second_sample_input());
+    let (cost, _final_node, _shortest_paths) = find_shortest_paths(&world);
+    assert_eq!(cost, 11048);
+}
+
+#[test]
+fn test_part2_first_sample_input() {
+    let world = World::from(first_sample_input());
+    let (cost, final_nodes, shortest_paths) = find_shortest_paths(&world);
+    let count = part2(&world, &final_nodes, cost, &shortest_paths);
+    assert_eq!(count, 45);
+}
+
+#[test]
+fn test_part2_second_sample_input() {
+    let world = World::from(second_sample_input());
+    let (cost, final_nodes, shortest_paths) = find_shortest_paths(&world);
+    let count = part2(&world, &final_nodes, cost, &shortest_paths);
+    assert_eq!(count, 64);
 }
 
 fn main() {
     let input_str = str::from_utf8(include_bytes!("input.txt")).unwrap();
     let world = World::from(input_str);
-    println!("day 16 part 1: {}", part1(&world));
+    let (cost, final_nodes, shortest_paths) = find_shortest_paths(&world);
+    println!("day 16 part 1: {}", cost);
+    let count = part2(&world, &final_nodes, cost, &shortest_paths);
+    println!("day 16 part 1: {}", count);
 }

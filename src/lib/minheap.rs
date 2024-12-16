@@ -5,6 +5,15 @@ pub struct MinHeap<T> {
     max_heap: BinaryHeap<Reverse<T>>,
 }
 
+impl<T> Default for MinHeap<T>
+where
+    T: Ord,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T> MinHeap<T>
 where
     T: Ord,
