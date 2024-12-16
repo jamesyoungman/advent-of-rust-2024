@@ -15,6 +15,16 @@ where
         }
     }
 
+    pub fn with_capacity(capacity: usize) -> MinHeap<T> {
+        MinHeap {
+            max_heap: BinaryHeap::with_capacity(capacity),
+        }
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.max_heap.capacity()
+    }
+
     pub fn push(&mut self, item: T) {
         self.max_heap.push(Reverse(item))
     }
@@ -34,10 +44,18 @@ where
         self.max_heap.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.max_heap.is_empty()
+    }
+
     pub fn drain(&mut self) -> Drain<T> {
         Drain {
             max_heap_drain: self.max_heap.drain(),
         }
+    }
+
+    pub fn append(&mut self, other: &mut MinHeap<T>) {
+        self.max_heap.append(&mut other.max_heap);
     }
 }
 
@@ -75,7 +93,10 @@ impl<T: Ord> FromIterator<T> for MinHeap<T> {
     }
 }
 
+#[cfg(test)]
 mod tests {
+    use super::MinHeap;
+
     #[test]
     fn new() {
         let mut h = MinHeap::new();
@@ -84,11 +105,31 @@ mod tests {
     }
 
     #[test]
+    fn is_empty() {
+        let mut h = MinHeap::new();
+        assert!(h.is_empty());
+        h.push(1);
+        assert!(!h.is_empty());
+    }
+
+    #[test]
+    fn len() {
+        let mut h = MinHeap::new();
+        assert_eq!(h.len(), 0);
+        h.push(1);
+        assert_eq!(h.len(), 1);
+    }
+
+    #[test]
     fn peek() {
         let mut h = MinHeap::new();
         h.push(1);
         h.push(2);
         assert_eq!(h.peek(), Some(&1));
+        h.pop();
+        assert_eq!(h.peek(), Some(&2));
+        h.pop();
+        assert_eq!(h.peek(), None);
     }
 
     #[test]
@@ -98,6 +139,7 @@ mod tests {
         h.push(2);
         assert_eq!(h.pop(), Some(1));
         assert_eq!(h.pop(), Some(2));
+        assert_eq!(h.pop(), None);
 
         // Same again but items originally added in the opposite order
         let mut h = MinHeap::new();
@@ -105,6 +147,7 @@ mod tests {
         h.push(2);
         assert_eq!(h.pop(), Some(1));
         assert_eq!(h.pop(), Some(2));
+        assert_eq!(h.pop(), None);
     }
 
     /// Verify that we don't require any trait beyond Ord.
@@ -124,5 +167,36 @@ mod tests {
                 panic!("should be able to pop from a non-empty heap");
             }
         }
+    }
+
+    #[test]
+    fn append() {
+        let mut h1 = MinHeap::new();
+        h1.push(10);
+        h1.push(20);
+        assert_eq!(h1.len(), 2);
+
+        let mut h2 = MinHeap::new();
+        h2.push(1000);
+        h2.push(2);
+        h2.push(6);
+        assert_eq!(h2.len(), 3);
+
+        h1.append(&mut h2);
+        assert_eq!(h2.len(), 0);
+        assert_eq!(h1.len(), 5);
+
+        assert_eq!(h1.pop(), Some(2));
+        assert_eq!(h1.pop(), Some(6));
+        assert_eq!(h1.pop(), Some(10));
+        assert_eq!(h1.pop(), Some(20));
+        assert_eq!(h1.pop(), Some(1000));
+        assert_eq!(h1.pop(), None);
+    }
+
+    #[test]
+    fn capacity() {
+        let h: MinHeap<i32> = MinHeap::with_capacity(400);
+        assert!(h.capacity() >= 400);
     }
 }
