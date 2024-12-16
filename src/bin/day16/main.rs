@@ -424,5 +424,5 @@ fn main() {
     let (cost, final_nodes, shortest_paths) = find_shortest_paths(&world);
     println!("day 16 part 1: {}", cost);
     let count = part2(&world, &final_nodes, cost, &shortest_paths);
-    println!("day 16 part 1: {}", count);
+    println!("day 16 part 2: {}", count);
 }
