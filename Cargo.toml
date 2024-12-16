@@ -13,6 +13,7 @@ debug = true
 clap = "4"
 itertools = "0.13"
 regex = "1"
+rustc-hash = "2.1.0"
 
 [lib]
 name = "lib"

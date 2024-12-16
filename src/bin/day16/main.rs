@@ -1,9 +1,17 @@
-use lib::grid::{BoundingBox, CompassDirection, Position};
-use lib::minheap::MinHeap;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashSet};
 use std::fmt::{Display, Formatter, Write};
 use std::str;
 
+use rustc_hash::FxHashMap;
+
+use lib::grid::{BoundingBox, CompassDirection, Position};
+use lib::minheap::MinHeap;
+
+// HashMap is faster in dijkstra() than BTreeMap, but there is no
+// reason other than that to care.  Similarly switching to FxHashMap
+// gives about a 15% speed-up.
+//type GenericMap<K, V> = HashMap<K, V>;
+type GenericMap<K, V> = FxHashMap<K, V>;
 type Distance = i64;
 
 const TURN_COST: i64 = 1000;
@@ -228,13 +236,13 @@ impl Graph<'_> {
 }
 
 struct ShortestPaths {
-    distances: BTreeMap<Node, Distance>,
+    distances: GenericMap<Node, Distance>,
 }
 
 fn dijkstra(g: &Graph, source: Node) -> ShortestPaths {
     let mut q: MinHeap<PrioritisedNode> = MinHeap::new();
-    let mut prev: BTreeMap<Node, BTreeSet<Node>> = BTreeMap::new();
-    let mut dist: BTreeMap<Node, Distance> = BTreeMap::new();
+    let mut prev: GenericMap<Node, BTreeSet<Node>> = GenericMap::default();
+    let mut dist: GenericMap<Node, Distance> = GenericMap::default();
 
     dist.insert(source, 0);
     q.push(PrioritisedNode {
@@ -242,12 +250,12 @@ fn dijkstra(g: &Graph, source: Node) -> ShortestPaths {
         node: source,
     });
 
-    let mut count = 0;
+    //let mut count = 0;
     while let Some(u) = q.pop() {
-        if count % 1000 == 0 {
-            println!("iteration {count:6}: PQ length is {0:6}", q.len());
-        }
-        count += 1;
+        //if count % 1000 == 0 {
+        //    println!("iteration {count:6}: PQ length is {0:6}", q.len());
+        //}
+        //count += 1;
         for v in g.neighbours(&u.node) {
             let cost = g.edge_cost(&u.node, &v);
             let alt: Distance = dist
