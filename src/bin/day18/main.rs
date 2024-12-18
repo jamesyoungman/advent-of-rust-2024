@@ -4,6 +4,7 @@ use std::collections::{HashSet, VecDeque};
 use std::fmt::Debug;
 use std::str;
 
+use disjoint::DisjointSet;
 use rustc_hash::FxHashMap;
 
 #[cfg(test)]
@@ -91,10 +92,6 @@ fn test_parse_input_prefix() {
 impl Memory {
     fn in_bounds(&self, pos: &Position) -> bool {
         self.bbox.contains(pos)
-    }
-
-    fn insert_fallen_byte(&mut self, pos: Position) -> bool {
-        self.fallen_bytes.insert(pos)
     }
 
     fn new(fallen: &[Position], xmax: i64, ymax: i64) -> Memory {
@@ -201,12 +198,7 @@ fn test_neighbours() {
     }
 }
 
-fn part1_bfs(
-    mem: &Memory,
-    start: &Position,
-    goal: &Position,
-    visited: &mut FxHashMap<Position, usize>,
-) -> Option<usize> {
+fn part1(mem: &Memory, start: &Position, goal: &Position) -> Option<usize> {
     let mut steps = None;
     let atgoal = |i: usize, pos: &Position| -> bool {
         if pos == goal {
@@ -217,7 +209,8 @@ fn part1_bfs(
         }
     };
     let neighbours = |here: Position| mem.neighbours(&here).into_iter();
-    bfs(start, neighbours, visited, atgoal);
+    let mut visited: FxHashMap<Position, usize> = Default::default();
+    bfs(start, neighbours, &mut visited, atgoal);
     steps
 }
 
@@ -225,54 +218,113 @@ fn part2(
     fallen_bytes: &[Position],
     start: &Position,
     goal: &Position,
-    limit: usize,
     xmax: i64,
     ymax: i64,
 ) -> Option<Position> {
-    let mut mem = Memory::new(&fallen_bytes[..limit], xmax, ymax);
-    let mut visited: FxHashMap<Position, usize> = Default::default();
-    part1_bfs(&mem, start, goal, &mut visited);
+    let mem = Memory::new(fallen_bytes, xmax, ymax);
 
-    for faller in &fallen_bytes[limit..] {
-        if mem.insert_fallen_byte(*faller) && visited.contains_key(faller) {
-            // Previously unoccupied positino, check for blockage.
-            visited.clear();
-            if part1_bfs(&mem, start, goal, &mut visited).is_none() {
-                return Some(*faller);
-            }
+    // Create a Position->usize mapping so that we can use the usize
+    // values with the Disjoint Set.
+    let idmap: FxHashMap<Position, usize> = mem
+        .bbox
+        .surface()
+        .enumerate()
+        .map(|(i, p)| (p, i))
+        .collect();
+
+    // We have established an invariant that every Position within the
+    // area to be handled has an associated id.  So our lookup
+    // function can never fail, as long as the positin is within
+    // bounds.
+    let find = |pos: &Position| -> usize {
+        *idmap
+            .get(pos)
+            .expect("every position should already be included")
+    };
+
+    // Scan the map, joining every pair of adjacent cells when neither
+    // of them is a wall.
+    let mut rooms = DisjointSet::with_len(idmap.len());
+    for (id, pos) in mem
+        .bbox
+        .surface()
+        .filter(|pos| !mem.fallen_bytes.contains(pos))
+        .map(|pos| (find(&pos), pos))
+    {
+        // This is not a wall.
+        for neighbourid in mem.neighbours(&pos).into_iter().map(|p| find(&p)) {
+            // neighbourid is also not a wall (because
+            // Memory::neighbours() does not return walls).  We
+            // know that these cells are part of the same room
+            // because they are adjoining.
+            rooms.join(id, neighbourid);
+        }
+    }
+    // At this point we have a disjoint set identifying all the
+    // "rooms" in the map after all bytes have fallen.
+    let startid = find(start);
+    let goalid = find(goal);
+    if rooms.is_joined(startid, goalid) {
+        panic!("after all bytes have falled, {goal} is still reachable from {start}");
+    }
+
+    // Remove all the falled bytes - importantly, in reverse order.
+    for faller in fallen_bytes.iter().rev() {
+        let fallerid = find(faller);
+        // When `faller` turns from a wall into an empty square, this
+        // has the effect of merging the newly empty cell with any
+        // empty squares around it.
+        for n in mem.neighbours(faller) {
+            rooms.join(fallerid, find(&n));
+        }
+        // If, as a result, `start` and `goal` are part of the same
+        // room, then the falling byte we just deleted must have been
+        // the first (considering the order they actually fell, not
+        // the reversed order) falling byte that caused `start` and
+        // `goal` to be disconnected.
+        if rooms.is_joined(startid, goalid) {
+            return Some(*faller);
         }
     }
     None
 }
 
 #[test]
-fn test_part1_bfs() {
-    let mem = parse_input(sample_input(), 6, 6, 12);
+fn test_part1() {
     let start = Position { x: 0, y: 0 };
     let goal = Position { x: 6, y: 6 };
-    let mut visited = Default::default();
-    let steps = part1_bfs(&mem, &start, &goal, &mut visited);
+    let mem = parse_input(sample_input(), 6, 6, 12);
+    let steps = part1(&mem, &start, &goal);
     assert_eq!(steps, Some(22));
+}
+
+#[test]
+fn test_part2() {
+    let fallen_bytes = parse_fallen_bytes(sample_input());
+    let start = Position { x: 0, y: 0 };
+    let goal = Position { x: 6, y: 6 };
+    assert_eq!(
+        part2(&fallen_bytes, &start, &goal, 6, 6),
+        Some(Position { x: 6, y: 1 })
+    );
 }
 
 fn main() {
     let input_str = str::from_utf8(include_bytes!("input.txt")).unwrap();
     let fallen_bytes = parse_fallen_bytes(input_str);
-    let mem = Memory::new(&fallen_bytes[..1024], 70, 70);
+    let xmax = 70;
+    let ymax = 70;
+    let mem = Memory::new(&fallen_bytes[..1024], xmax, ymax);
     let origin = Position { x: 0, y: 0 };
-    let goal = Position { x: 70, y: 70 };
-    let mut visited: FxHashMap<Position, usize> = Default::default();
-    match part1_bfs(&mem, &origin, &goal, &mut visited) {
-        Some(steps) => {
-            println!("Day 18 part 1: {}", steps);
-            if let Some(blocker) = part2(&fallen_bytes, &origin, &goal, 1024, 70, 70) {
-                println!("Day 18 part 2: {}", blocker);
-            } else {
-                println!("Day 18 part 2: found no blocker");
-            }
-        }
-        None => {
-            panic!("Day 18: cannot solve part 1");
-        }
+    let goal = Position { x: xmax, y: ymax };
+    if let Some(steps) = part1(&mem, &origin, &goal) {
+        println!("Day 18 part 1: {}", steps);
+    } else {
+        panic!("Day 18: cannot solve part 1");
+    }
+    if let Some(blocker) = part2(&fallen_bytes, &origin, &goal, xmax, ymax) {
+        println!("Day 18 part 2: {}", blocker);
+    } else {
+        println!("Day 18 part 2: found no blocker");
     }
 }
