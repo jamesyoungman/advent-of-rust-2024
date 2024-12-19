@@ -15,6 +15,7 @@ itertools = "0.13"
 regex = "1"
 rustc-hash = "2.1.0"
 disjoint = "0.8"
+patricia_tree = "0.8"
 
 [lib]
 name = "lib"
