@@ -100,6 +100,18 @@ impl Position {
         }
     }
 
+    pub fn is_neighbour_of(&self, other: &Position) -> bool {
+        let dx = self.x.checked_sub(other.x);
+        let dy = self.y.checked_sub(other.y);
+        match (dx, dy) {
+            (Some(dx), Some(dy)) => match (dx, dy) {
+                (1 | -1, 0) | (0, 1 | -1) => true,
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
     pub fn move_direction(&self, d: &CompassDirection) -> Position {
         self.repeated_move_direction(d, 1)
     }
@@ -125,6 +137,23 @@ impl Position {
                 "y-coordinates {} and {} are too far apart",
                 self.y, to.y
             )),
+        }
+    }
+}
+
+#[test]
+fn test_is_neighbour_of() {
+    let origin = Position { x: 0, y: 0 };
+    for d in ALL_MOVE_OPTIONS {
+        let n = origin.move_direction(&d);
+        assert!(origin.is_neighbour_of(&n));
+        assert!(n.is_neighbour_of(&origin));
+        for d2 in ALL_MOVE_OPTIONS {
+            let n2 = n.move_direction(&d2);
+            if n2 == origin {
+                continue;
+            }
+            assert!(!origin.is_neighbour_of(&n2));
         }
     }
 }
