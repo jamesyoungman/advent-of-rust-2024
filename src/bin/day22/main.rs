@@ -3,15 +3,15 @@ use std::str;
 
 use lib::parse::parse_number;
 
-fn prune(n: u64) -> u64 {
-    n % 16777216
-}
-
-fn mix(n: u64, m: u64) -> u64 {
-    n ^ m
-}
-
 fn generate(mut n: u64) -> u64 {
+    fn prune(n: u64) -> u64 {
+        n % 16777216
+    }
+
+    fn mix(n: u64, m: u64) -> u64 {
+        n ^ m
+    }
+
     n = prune(mix(n, n * 64)); // first step
     n = prune(mix(n, n / 32)); // second step
     n = prune(mix(n, n * 2048)); // third step
@@ -74,13 +74,22 @@ fn generate_and_remember_2k_final_digits(initial: u64) -> [u8; 2000] {
     result
 }
 
-fn compute_deltas(values: &[u8; 2000]) -> [(u8, i8); 1999] {
-    let mut result = [(0, 0); 1999];
+#[derive(Debug, PartialEq, Eq, Default, Clone, Copy)]
+struct Delta {
+    units_digit: u8,
+    change: i8,
+}
+
+fn compute_deltas(values: &[u8; 2000]) -> [Delta; 1999] {
+    let mut result = [Default::default(); 1999];
     for i in 1..values.len() {
         let prev: i8 = values[i - 1] as i8;
         let curr: i8 = values[i] as i8;
-        let delta = curr - prev;
-        result[i - 1] = (values[i], delta);
+        let change = curr - prev;
+        result[i - 1] = Delta {
+            units_digit: values[i],
+            change,
+        };
     }
     result
 }
@@ -89,20 +98,37 @@ fn compute_deltas(values: &[u8; 2000]) -> [(u8, i8); 1999] {
 fn test_compute_deltas() {
     let actuals = generate_and_remember_2k_final_digits(123);
     assert_eq!(&actuals[0..4], &[3, 0, 6, 5]);
-    let changes: [(u8, i8); 1999] = compute_deltas(&actuals);
-    assert_eq!(&changes[0..4], &[(0, -3), (6, 6), (5, -1), (4, -1)]);
+    let changes: [Delta; 1999] = compute_deltas(&actuals);
+    assert_eq!(
+        &changes[0..4],
+        &[
+            Delta {
+                units_digit: 0,
+                change: -3,
+            },
+            Delta {
+                units_digit: 6,
+                change: 6,
+            },
+            Delta {
+                units_digit: 5,
+                change: -1,
+            },
+            Delta {
+                units_digit: 4,
+                change: -1,
+            }
+        ]
+    );
 }
 
 fn first_sale_by_pattern(initial: u64) -> BTreeMap<[i8; 4], u8> {
     let prices: [u8; 2000] = generate_and_remember_2k_final_digits(initial);
-    let changes: [(u8, i8); 1999] = compute_deltas(&prices);
+    let changes: [Delta; 1999] = compute_deltas(&prices);
     changes.windows(4).fold(BTreeMap::new(), |mut acc, w| {
-        let key: [i8; 4] = [w[0].1, w[1].1, w[2].1, w[3].1];
-        let sale_price = w[3].0;
-        acc.entry(key).or_insert_with(|| {
-            //dbg!(&(keystr(&key), sale_price));
-            sale_price
-        });
+        let key: [i8; 4] = [w[0].change, w[1].change, w[2].change, w[3].change];
+        let sale_price = w[3].units_digit;
+        acc.entry(key).or_insert(sale_price);
         acc
     })
 }
@@ -139,8 +165,7 @@ fn test_first_sale_by_pattern_example() {
 }
 
 fn part2(initials: &[u64]) -> Option<u64> {
-    let total_sales = total_sales_by_pattern(initials);
-    total_sales.values().max().copied()
+    total_sales_by_pattern(initials).values().max().copied()
 }
 
 fn main() {
