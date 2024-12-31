@@ -65,3 +65,5 @@ name = "day22"
 name = "day23"
 [[bin]]
 name = "day24"
+[[bin]]
+name = "day25"
