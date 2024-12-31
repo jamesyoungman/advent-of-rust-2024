@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, ops::Range, str};
+use std::str;
 
 const TUMBLERS: usize = 5;
 const MAX_SPACE: i8 = 5;
@@ -6,6 +6,15 @@ const MAX_SPACE: i8 = 5;
 #[derive(Debug, PartialEq, Eq)]
 struct Profile {
     height: [i8; TUMBLERS],
+}
+
+impl Profile {
+    fn accepts(&self, other: &Profile) -> bool {
+        self.height
+            .iter()
+            .zip(other.height.iter())
+            .all(|(lh, kh)| lh + kh <= MAX_SPACE)
+    }
 }
 
 /// We follow the convention in the examples, where the lock has pins
@@ -19,87 +28,27 @@ enum ParseResult {
     Lock(Profile),
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
-struct LockId(usize);
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
-struct KeyId(usize);
-
 #[derive(Debug, PartialEq, Eq, Default)]
 struct Schematics {
     locks: Vec<Profile>,
     keys: Vec<Profile>,
-    lock_tumbler_index: [BTreeMap<i8, Vec<LockId>>; TUMBLERS],
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct LockIter<'a> {
-    lockref: &'a [Profile],
-    inner: Range<usize>,
-}
-
-impl Iterator for LockIter<'_> {
-    type Item = LockId;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(LockId)
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct KeyIter<'a> {
-    keyref: &'a [Profile],
-    inner: Range<usize>,
-}
-
-impl Iterator for KeyIter<'_> {
-    type Item = KeyId;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(KeyId)
-    }
 }
 
 impl Schematics {
-    fn keys(&self) -> KeyIter<'_> {
-        KeyIter {
-            keyref: &self.keys,
-            inner: 0..self.keys.len(),
-        }
+    fn keys(&self) -> impl Iterator<Item = &Profile> {
+        self.keys.iter()
     }
 
-    fn locks(&self) -> LockIter<'_> {
-        LockIter {
-            lockref: &self.locks,
-            inner: 0..self.locks.len(),
-        }
+    fn locks(&self) -> impl Iterator<Item = &Profile> {
+        self.locks.iter()
     }
 
-    fn add_key(&mut self, profile: Profile) -> KeyId {
-        let id = KeyId(self.keys.len());
+    fn add_key(&mut self, profile: Profile) {
         self.keys.push(profile);
-        id
     }
 
-    fn add_lock(&mut self, profile: Profile) -> LockId {
-        let id = LockId(self.locks.len());
-        for (tumbler, height) in profile.height.iter().enumerate() {
-            self.lock_tumbler_index[tumbler]
-                .entry(*height)
-                .or_default()
-                .push(id);
-        }
+    fn add_lock(&mut self, profile: Profile) {
         self.locks.push(profile);
-        id
-    }
-
-    fn lock_accepts_key(&self, l: LockId, k: KeyId) -> bool {
-        let lock = &self.locks[l.0];
-        let key = &self.keys[k.0];
-        lock.height
-            .iter()
-            .zip(key.height.iter())
-            .all(|(lh, kh)| lh + kh <= MAX_SPACE)
     }
 }
 
@@ -210,11 +159,9 @@ fn parse_schematics(input: &str) -> Schematics {
 }
 
 fn count_fit_combinations(sch: &Schematics) -> usize {
-    // This implementation is slower than necessary since it doesn't
-    // use the index.
     sch.keys()
-        .flat_map(|key_id| sch.locks().map(move |lock_id| (lock_id, key_id)))
-        .filter(|(lock_id, key_id)| sch.lock_accepts_key(*lock_id, *key_id))
+        .flat_map(|key| sch.locks().map(move |lock| (lock, key)))
+        .filter(|(lock, key)| lock.accepts(key))
         .count()
 }
 
@@ -270,17 +217,17 @@ fn part1(sch: &Schematics) -> usize {
 #[test]
 fn test_lock_accepts_key() {
     let sch: Schematics = parse_schematics(sample_input());
-    let lock_05343 = LockId(0);
-    let lock_12053 = LockId(1);
-    let key_50213 = KeyId(0);
-    let key_43402 = KeyId(1);
-    let key_30201 = KeyId(2);
-    assert!(!sch.lock_accepts_key(lock_05343, key_50213));
-    assert!(!sch.lock_accepts_key(lock_05343, key_43402));
-    assert!(sch.lock_accepts_key(lock_05343, key_30201));
-    assert!(!sch.lock_accepts_key(lock_12053, key_50213));
-    assert!(sch.lock_accepts_key(lock_12053, key_43402));
-    assert!(sch.lock_accepts_key(lock_12053, key_30201));
+    let lock_05343 = &sch.locks[0];
+    let lock_12053 = &sch.locks[1];
+    let key_50213 = &sch.keys[0];
+    let key_43402 = &sch.keys[1];
+    let key_30201 = &sch.keys[2];
+    assert!(!lock_05343.accepts(key_50213));
+    assert!(!lock_05343.accepts(key_43402));
+    assert!(lock_05343.accepts(key_30201));
+    assert!(!lock_12053.accepts(key_50213));
+    assert!(lock_12053.accepts(key_43402));
+    assert!(lock_12053.accepts(key_30201));
 }
 
 #[test]
