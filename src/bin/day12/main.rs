@@ -3,29 +3,6 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::str;
 
 #[derive(Debug, PartialEq, Eq)]
-struct Measurements {
-    area: usize,
-    perimeter: usize,
-}
-
-impl Measurements {
-    fn total_price(&self) -> usize {
-        self.area * self.perimeter
-    }
-}
-
-//fn count_true_transitions<I>(items: I) -> usize
-//where
-//    I: Iterator<Item = bool>,
-//{
-//    fn f((count, prev): (usize, bool), current: bool) -> (usize, bool) {
-//        let transition: usize = if current && !prev { 1 } else { 0 };
-//        (count + transition, current)
-//    }
-//    items.fold((0, false), f).0
-//}
-
-#[derive(Debug, PartialEq, Eq)]
 struct Plot {
     label: char,
     squares: HashSet<Position>,
@@ -46,52 +23,50 @@ impl Plot {
         }
     }
 
-    pub fn analyze(&self) -> Measurements {
-        let mut area = 0;
-        let mut perimeter = 0;
-        for pos in self.squares.iter() {
-            area += 1;
-            let neighbour_count = neighbours(pos, &self.squares).len();
-            perimeter += 4 - neighbour_count;
-        }
-        //let sides = self.count_sides();
-        Measurements { area, perimeter }
+    fn neighbours(&self, here: Position) -> impl Iterator<Item = Position> + use<'_> {
+        compute_neighbours(here, &self.squares)
     }
 
-    //fn attached_edge_count(&self, _pos: &Position) -> usize {
-    //    let b = BoundingBox {
-    //        top_left: Position {
-    //            x: self.bbox.top_left.x - 1,
-    //            y: self.bbox.top_left.y - 1,
-    //        },
-    //        bottom_right: Position {
-    //            x: self.bbox.bottom_right.x + 1,
-    //            y: self.bbox.bottom_right.y + 1,
-    //        },
-    //    };
-    //    let western_edges = count_true_transitions(b.columns().flat_map(|x| {
-    //        b.rows().map(move |y| {
-    //            let left = Position { x, y };
-    //            let right = Position { x: x + 1, y };
-    //            !self.squares.contains(&left) && self.squares.contains(&right)
-    //        })
-    //    }));
-    //    let northern_edges = count_true_transitions(b.rows().flat_map(|y| {
-    //        b.columns().map(move |x| {
-    //            let upper = Position { x, y };
-    //            let lower = Position { x, y: y + 1 };
-    //            !self.squares.contains(&upper) && self.squares.contains(&lower)
-    //        })
-    //    }));
-    //    western_edges * 2 + northern_edges * 2
-    //}
+    pub fn area(&self) -> usize {
+        self.squares.len()
+    }
 
-    //fn count_sides(&self) -> usize {
-    //    self.squares
-    //        .iter()
-    //        .map(|pos| self.attached_edge_count(pos))
-    //        .sum()
-    //}
+    pub fn perimeter(&self) -> usize {
+        self.squares
+            .iter()
+            .map(|pos| 4 - self.neighbours(*pos).count())
+            .sum()
+    }
+
+    fn count_corners_here(&self, here: &Position) -> usize {
+        let same_crop = |here: Position, dx: i64, dy: i64| -> bool {
+            let there = Position {
+                x: here.x + dx,
+                y: here.y + dy,
+            };
+            self.squares.contains(&there)
+        };
+        [
+            is_northeast_corner(*here, same_crop),
+            is_southeast_corner(*here, same_crop),
+            is_southwest_corner(*here, same_crop),
+            is_northwest_corner(*here, same_crop),
+        ]
+        .into_iter()
+        .filter(|x| *x)
+        .count()
+    }
+
+    pub fn total_sides(&self) -> usize {
+        self.squares
+            .iter()
+            .map(|pos| self.count_corners_here(pos))
+            .sum()
+    }
+
+    pub fn total_discounted_price(&self) -> usize {
+        self.area() * self.total_sides()
+    }
 }
 
 fn make_bbox<'a, I: Iterator<Item = &'a Position>>(squares: I) -> Option<BoundingBox> {
@@ -177,13 +152,11 @@ impl Garden {
             if squares.is_empty() {
                 panic!("unexpectedly, there are no squares with label {label}");
             }
-            let todo: Vec<Position> = squares.iter().copied().collect();
-            for here in todo {
-                if !visited.contains(&here) {
-                    //eprintln!("Label {label}: running BFS on {squares:?}...");
+            for here in squares.iter() {
+                if !visited.contains(here) {
                     let get_neighbours = |pos: Position| compute_neighbours(pos, &squares);
                     let plot_squares: HashSet<Position> =
-                        bfs(&here, get_neighbours, &mut visited, keep_all)
+                        bfs(here, get_neighbours, &mut visited, keep_all)
                             .into_iter()
                             .collect();
                     if plot_squares.is_empty() {
@@ -236,10 +209,6 @@ fn compute_neighbours(
         .filter(|there| squares.contains(there))
 }
 
-fn neighbours(here: &Position, squares: &HashSet<Position>) -> Vec<Position> {
-    compute_neighbours(*here, squares).collect()
-}
-
 #[test]
 fn test_analyze_plot() {
     let plot = Plot::new(
@@ -252,33 +221,22 @@ fn test_analyze_plot() {
         ]
         .into(),
     );
-    assert_eq!(
-        plot.analyze(),
-        Measurements {
-            area: 4,
-            perimeter: 8,
-        }
-    );
+    assert_eq!(plot.area(), 4);
+    assert_eq!(plot.perimeter(), 8);
 
     let plot = Plot::new(
         'Z',
         [Position { x: 0, y: 0 }, Position { x: 1, y: 0 }].into(),
     );
-    assert_eq!(
-        plot.analyze(),
-        Measurements {
-            area: 2,
-            perimeter: 6,
-        }
-    );
+    assert_eq!(plot.area(), 2);
+    assert_eq!(plot.perimeter(), 6);
 }
 
 fn part1(g: &Garden) -> usize {
     let plots = g.identify_plots();
     plots
         .iter()
-        .map(|plot| plot.analyze())
-        .map(|measurements| measurements.total_price())
+        .map(|plot| plot.area() * plot.perimeter())
         .sum()
 }
 
@@ -288,7 +246,406 @@ fn test_part1() {
     assert_eq!(part1(&garden), 140);
 }
 
+fn is_northeast_corner<F>(here: Position, same_crop: F) -> bool
+where
+    F: Fn(Position, i64, i64) -> bool,
+{
+    // Cases:
+    //
+    // Here, we consider the "O" at the bottom-left of the example.  Other
+    // squares marked "O" have the same crop, and squares marked "x"
+    // have a crop different to O (and not necessarily the same as
+    // each other).  The contents of squares marked "."  are not
+    // material.
+    //
+    // Inside corner:
+    //
+    // Ox
+    // OO
+    //
+    // Outside corner:
+    //
+    // x.
+    // Ox
+    //
+    // We start not knowing the state of any surrounding squares:
+    //
+    // ??
+    // O?
+    //
+    let north_same = || same_crop(here, 0, -1);
+    let north_east_same = || same_crop(here, 1, -1);
+    let east_same = || same_crop(here, 1, 0);
+
+    if north_same() {
+        // O?
+        // O?
+        if east_same() {
+            // O?
+            // OO
+            if north_east_same() {
+                // OO
+                // OO
+                false
+            } else {
+                // Ox
+                // OO
+                true // inside corner
+            }
+        } else {
+            // O?
+            // Ox
+            false
+        }
+    } else {
+        // x?
+        // O?
+        if east_same() {
+            // x?
+            // OO
+            false
+        } else {
+            // x?
+            // Ox
+            true
+        }
+    }
+}
+
+fn is_southeast_corner<F>(here: Position, same_crop: F) -> bool
+where
+    F: Fn(Position, i64, i64) -> bool,
+{
+    let same = |here: Position, dx: i64, dy: i64| -> bool { same_crop(here, -dy, dx) };
+    is_northeast_corner(here, same)
+}
+
+fn is_southwest_corner<F>(here: Position, same_crop: F) -> bool
+where
+    F: Fn(Position, i64, i64) -> bool,
+{
+    let same = |here: Position, dx: i64, dy: i64| -> bool { same_crop(here, -dx, -dy) };
+    is_northeast_corner(here, same)
+}
+
+fn is_northwest_corner<F>(here: Position, same_crop: F) -> bool
+where
+    F: Fn(Position, i64, i64) -> bool,
+{
+    let same = |here: Position, dx: i64, dy: i64| -> bool { same_crop(here, -dx, dy) };
+    is_northeast_corner(here, same)
+}
+
+#[test]
+fn test_is_ne_corner() {
+    let garden = parse_input(sample_input_small());
+    let plots: Vec<Plot> = garden.identify_plots();
+    for plot in plots {
+        let same_crop = |here: Position, dx: i64, dy: i64| -> bool {
+            let there = Position {
+                x: here.x + dx,
+                y: here.y + dy,
+            };
+            plot.squares.contains(&there)
+        };
+        match plot.label {
+            'A' => {
+                assert!(!is_northeast_corner(Position { x: 0, y: 0 }, same_crop));
+            }
+            'B' => {
+                assert!(is_northeast_corner(Position { x: 1, y: 1 }, same_crop));
+                // B (outside)
+            }
+            'C' => {
+                assert!(is_northeast_corner(Position { x: 2, y: 1 }, same_crop)); // C (outside)
+                assert!(is_northeast_corner(Position { x: 3, y: 2 }, same_crop)); // C (outside)
+                assert!(is_northeast_corner(Position { x: 2, y: 2 }, same_crop)); // C (inside)
+                assert!(!is_northeast_corner(Position { x: 3, y: 3 }, same_crop));
+                // it's a se+sw corner but not ne
+            }
+            'D' => {
+                assert!(is_northeast_corner(Position { x: 3, y: 1 }, same_crop));
+                // D (outside)
+            }
+            'E' => (),
+            other => {
+                panic!("unexpected plot label {other}'");
+            }
+        }
+    }
+}
+
+#[test]
+fn test_is_nw_corner() {
+    let garden = parse_input(sample_input_small());
+    let plots: Vec<Plot> = garden.identify_plots();
+    for plot in plots {
+        let same_crop = |here: Position, dx: i64, dy: i64| -> bool {
+            let there = Position {
+                x: here.x + dx,
+                y: here.y + dy,
+            };
+            plot.squares.contains(&there)
+        };
+        match plot.label {
+            'A' => {
+                assert!(
+                    is_northwest_corner(Position { x: 0, y: 0 }, same_crop),
+                    "0,0 should be a NW corner for A"
+                );
+            }
+            'B' => {
+                assert!(
+                    is_northwest_corner(Position { x: 0, y: 1 }, same_crop),
+                    "0,1 should be a NW corner for B"
+                );
+                assert!(
+                    !is_northwest_corner(Position { x: 0, y: 2 }, same_crop),
+                    "0,2 should not be a NW corner"
+                );
+            }
+            'C' | 'D' | 'E' => (),
+            other => {
+                panic!("unexpected plot label {other}'");
+            }
+        }
+    }
+}
+
+#[test]
+fn test_isolated_square_corners() {
+    let garden = parse_input(concat!(
+        "AAA\n", // do not eliminate line break
+        "ABA\n", // do not eliminate line break
+        "AAA\n",
+    ));
+    let plots: Vec<Plot> = garden.identify_plots();
+    for plot in plots {
+        let same_crop = |here: Position, dx: i64, dy: i64| -> bool {
+            let there = Position {
+                x: here.x + dx,
+                y: here.y + dy,
+            };
+            plot.squares.contains(&there)
+        };
+        match plot.label {
+            'B' => {
+                let centre = Position { x: 1, y: 1 };
+                assert!(is_northwest_corner(centre, same_crop));
+                assert!(is_northeast_corner(centre, same_crop));
+                assert!(is_southeast_corner(centre, same_crop));
+                assert!(is_southwest_corner(centre, same_crop));
+            }
+            _ => (),
+        }
+    }
+}
+
+#[test]
+fn test_inside_corners() {
+    let garden = parse_input(concat!(
+        "AAA\n", // do not eliminate line break
+        "ABA\n", // do not eliminate line break
+        "AAA\n",
+    ));
+    let plots: Vec<Plot> = garden.identify_plots();
+    for plot in plots {
+        let same_crop = |here: Position, dx: i64, dy: i64| -> bool {
+            let there = Position {
+                x: here.x + dx,
+                y: here.y + dy,
+            };
+            plot.squares.contains(&there)
+        };
+        match plot.label {
+            'A' => {
+                let ne_pos = Position { x: 2, y: 0 };
+                assert!(is_southwest_corner(ne_pos, same_crop));
+                assert!(is_northeast_corner(ne_pos, same_crop));
+
+                let se_pos = Position { x: 2, y: 2 };
+                assert!(is_northwest_corner(se_pos, same_crop));
+                assert!(is_southeast_corner(se_pos, same_crop));
+
+                let sw_pos = Position { x: 0, y: 2 };
+                assert!(is_northeast_corner(sw_pos, same_crop));
+                assert!(is_southwest_corner(sw_pos, same_crop));
+
+                let nw_pos = Position { x: 0, y: 0 };
+                assert!(is_southeast_corner(nw_pos, same_crop));
+                assert!(is_northwest_corner(nw_pos, same_crop));
+            }
+            'B' => (),
+            other => {
+                panic!("unexpected plot label {other}'");
+            }
+        }
+    }
+}
+
+#[test]
+fn test_is_se_corner() {
+    let garden = parse_input(sample_input_small());
+    let plot_a: Plot = garden
+        .identify_plots()
+        .into_iter()
+        .find(|plot| plot.label == 'A')
+        .expect("there is a plot A");
+    let same_crop = |here: Position, dx: i64, dy: i64| -> bool {
+        let there = Position {
+            x: here.x + dx,
+            y: here.y + dy,
+        };
+        plot_a.squares.contains(&there)
+    };
+    assert!(!is_southeast_corner(Position { x: 0, y: 0 }, same_crop));
+    assert!(!is_southeast_corner(Position { x: 1, y: 0 }, same_crop));
+    assert!(!is_southeast_corner(Position { x: 2, y: 0 }, same_crop));
+    assert!(is_southeast_corner(Position { x: 3, y: 0 }, same_crop));
+}
+
+#[test]
+fn test_is_sw_corner() {
+    let garden = parse_input(sample_input_small());
+    let plots: Vec<Plot> = garden.identify_plots();
+    assert_eq!(plots.len(), 5);
+    for plot in plots {
+        let same_crop = |here: Position, dx: i64, dy: i64| -> bool {
+            let there = Position {
+                x: here.x + dx,
+                y: here.y + dy,
+            };
+            plot.squares.contains(&there)
+        };
+        match plot.label {
+            'A' => {
+                assert!(is_southwest_corner(Position { x: 0, y: 0 }, same_crop));
+                // A (outside)
+            }
+            'B' => {
+                assert!(is_southwest_corner(Position { x: 0, y: 2 }, same_crop)); // B (outside)
+                assert!(!is_southwest_corner(Position { x: 0, y: 1 }, same_crop));
+            }
+            'C' | 'D' => (),
+            'E' => {
+                assert!(is_southwest_corner(Position { x: 0, y: 3 }, same_crop));
+                // E (outside)
+            }
+            other => {
+                panic!("unexpected plot label {other}'");
+            }
+        }
+    }
+}
+
+#[test]
+fn test_edge_noncorners() {
+    let garden = parse_input(concat!(
+        "AAA\n", // do not eliminate line break
+        "ABA\n", // do not eliminate line break
+        "AAA\n",
+    ));
+    let plots: Vec<Plot> = garden.identify_plots();
+    assert_eq!(plots.len(), 2);
+    for plot in plots {
+        match plot.label {
+            'A' => {
+                assert_eq!(plot.count_corners_here(&Position { x: 0, y: 1 }), 0); // west centre
+                assert_eq!(plot.count_corners_here(&Position { x: 2, y: 1 }), 0); // east centre
+                assert_eq!(plot.count_corners_here(&Position { x: 1, y: 0 }), 0); // north centre
+                assert_eq!(plot.count_corners_here(&Position { x: 1, y: 2 }), 0);
+                // south centre
+            }
+            'B' => (),
+            other => {
+                panic!("unexpected plot label {other}'");
+            }
+        }
+    }
+}
+
+#[test]
+fn test_eeeee_count_sides() {
+    let garden: Garden = parse_input(concat!(
+        "EEEEE\n", // retain line break
+        "EXXXX\n", // retain line break
+        "EEEEE\n", // retain line break
+        "EXXXX\n", // retain line break
+        "EEEEE\n",
+    ));
+    let plots: Vec<Plot> = garden.identify_plots();
+    for plot in plots {
+        if plot.label == 'E' {
+            assert_eq!(plot.total_sides(), 12);
+            assert_eq!(plot.area(), 17);
+        } else {
+            assert_eq!(plot.label, 'X');
+        }
+    }
+}
+
+#[test]
+fn test_part2_e() {
+    let garden: Garden = parse_input(concat!(
+        "EEEEE\n", // retain line break
+        "EXXXX\n", // retain line break
+        "EEEEE\n", // retain line break
+        "EXXXX\n", // retain line break
+        "EEEEE\n",
+    ));
+    assert_eq!(part2(&garden), 236);
+}
+
+#[test]
+fn test_part2_aaaaaa() {
+    let garden: Garden = parse_input(concat!(
+        "AAAAAA\n", // retain line break
+        "AAABBA\n", // retain line break
+        "AAABBA\n", // retain line break
+        "ABBAAA\n", // retain line break
+        "ABBAAA\n", // retain line break
+        "AAAAAA\n", // retain line break
+    ));
+    assert_eq!(part2(&garden), 368);
+}
+
+#[test]
+fn test_count_sides() {
+    let garden: Garden = parse_input(concat!(
+        "AAAA\n", // retain line break
+        "BBCD\n", // retain line break
+        "BBCC\n", // retain line break
+        "EEEC\n", // retain line break
+    ));
+    let plots = garden.identify_plots();
+    assert_eq!(plots.len(), 5);
+    for plot in plots {
+        match plot.label {
+            'A' | 'B' | 'D' | 'E' => {
+                assert_eq!(
+                    plot.total_sides(),
+                    4,
+                    "wrong number of sides for plot {}",
+                    plot.label
+                );
+            }
+            'C' => {
+                assert_eq!(plot.total_sides(), 8);
+            }
+            other => {
+                panic!("unexpected plot label {other}'");
+            }
+        }
+    }
+}
+
+fn part2(garden: &Garden) -> usize {
+    let plots = garden.identify_plots();
+    plots.iter().map(|plot| plot.total_discounted_price()).sum()
+}
+
 fn main() {
     let input: Garden = parse_input(str::from_utf8(include_bytes!("input.txt")).unwrap());
     println!("day 12 part 1: {}", part1(&input));
+    println!("day 12 part 2: {}", part2(&input));
 }
