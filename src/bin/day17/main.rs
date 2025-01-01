@@ -1,5 +1,7 @@
+use std::cmp::Ordering;
 use std::error::Error;
-use std::fmt::{Display, Formatter, LowerHex};
+use std::fmt::{Display, Formatter};
+use std::ops::Range;
 use std::str;
 
 use regex::Regex;
@@ -12,26 +14,16 @@ type Number = i64;
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum OutputCheckMode {
     Off,
-    On,
+    Content,
+    LengthOnly,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 struct Computer {
     a: Number,
     b: Number,
     c: Number,
     pc: usize,
-}
-
-impl Default for Computer {
-    fn default() -> Self {
-        Computer {
-            a: 0,
-            b: 0,
-            c: 0,
-            pc: 0,
-        }
-    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -61,7 +53,9 @@ enum Opcode {
 #[derive(Debug, PartialEq, Eq)]
 enum Fault {
     Halt,
-    IncorrectOutput(String),
+    OutputTooShort,
+    OutputTooLong,
+    IncorrectOutput { pos: usize, value: u8 },
     Failed(Fail),
 }
 
@@ -70,8 +64,13 @@ impl Display for Fault {
         match self {
             Fault::Halt => f.write_str("program terminated normally"),
             Fault::Failed(e) => write!(f, "program failed: {e}"),
-            Fault::IncorrectOutput(explanation) => {
-                write!(f, "incorrect program output: {explanation}")
+            Fault::OutputTooShort => f.write_str("output is too short"),
+            Fault::OutputTooLong => f.write_str("output is too long"),
+            Fault::IncorrectOutput { pos, value } => {
+                write!(
+                    f,
+                    "incorrect program output value {value} at position {pos}"
+                )
             }
         }
     }
@@ -155,17 +154,23 @@ impl Computer {
                         dbg!(&output_value);
                     }
                     match check_mode {
-                        OutputCheckMode::On => match program.values.get(output_values.len()) {
+                        OutputCheckMode::Content => match program.values.get(output_values.len()) {
                             None => {
-                                return Err(Fault::IncorrectOutput("too much output".to_string()));
+                                return Err(Fault::OutputTooLong);
                             }
                             Some(&expected) if expected != output_value => {
-                                return Err(Fault::IncorrectOutput(
-					format!("at output position {0}, expected {expected} but got {output_value}",
-						output_values.len())));
+                                return Err(Fault::IncorrectOutput {
+                                    pos: output_values.len(),
+                                    value: output_value,
+                                });
                             }
                             Some(_) => (),
                         },
+                        OutputCheckMode::LengthOnly => {
+                            if output_values.len() >= program.values.len() {
+                                return Err(Fault::OutputTooLong);
+                            }
+                        }
                         OutputCheckMode::Off => (),
                     }
                     output_values.push(output_value);
@@ -173,12 +178,9 @@ impl Computer {
                 Err(Fault::Halt) => {
                     match check_mode {
                         OutputCheckMode::Off => (),
-                        OutputCheckMode::On => {
+                        OutputCheckMode::Content | OutputCheckMode::LengthOnly => {
                             if output_values.len() < program.values.len() {
-                                return Err(Fault::IncorrectOutput(format!(
-                                    "program halted after producing only {0} output values",
-                                    output_values.len()
-                                )));
+                                return Err(Fault::OutputTooShort);
                             }
                         }
                     }
@@ -201,7 +203,7 @@ impl Computer {
         let mut output: Option<u8> = None;
         let jumped: bool = match opcode {
             Opcode::Adv => {
-                self.a /= 1 << operand;
+                self.a >>= operand;
                 false
             }
             Opcode::Bxl => {
@@ -213,7 +215,7 @@ impl Computer {
                 false
             }
             Opcode::Jnz => {
-                eprintln!("JNZ: a={:x}", &self.a);
+                //eprintln!("JNZ: a={:x}", &self.a);
                 if self.a == 0 {
                     false
                 } else {
@@ -239,17 +241,17 @@ impl Computer {
                     dbg!(&operand);
                 }
                 let outval: u8 = (operand % 8) as u8;
-                eprintln!("OUT {outval:x}");
+                //eprintln!("OUT {outval:x}");
                 output = Some(outval);
                 false
             }
             Opcode::Bdv => {
-                self.b = self.a / (1 << operand);
+                self.b = self.a >> operand;
                 false
             }
             Opcode::Cdv => {
                 // This opcode does not appear in examples.
-                self.c = self.a / (1 << operand);
+                self.c = self.a >> operand;
                 false
             }
         };
@@ -463,77 +465,164 @@ fn part1(cpu: &Computer, program: &Program) -> String {
     }
 }
 
-fn binary_search<F>(mut lower: i64, mut upper: i64, target: i64, eval: F) -> i64
-where
-    F: Fn(i64) -> i64,
-{
-    let mut iteration = 0;
-    while upper > lower + 1 {
-        iteration += 1;
-        let mid = (upper - lower) / 2 + lower;
-        assert!(lower < mid);
-        assert!(mid < upper);
-        let y = eval(mid);
-        println!(
-            "iteration {iteration:3}: lower={lower:8} upper={upper:8} target={target:8} y={y:8}"
-        );
-        if y > target {
-            upper = mid;
-        } else {
-            lower = mid;
+fn check_quine(
+    orig_cpu: &Computer,
+    program: &Program,
+    a: Number,
+    check_mode: &OutputCheckMode,
+) -> Option<Ordering> {
+    let mut cpu = Computer {
+        a,
+        b: orig_cpu.b,
+        c: orig_cpu.c,
+        pc: 0,
+    };
+    match cpu.run(program, check_mode, false) {
+        Ok(_values) => Some(Ordering::Equal),
+        Err(Fault::OutputTooShort) => {
+            // A was too low.
+            Some(Ordering::Less)
+        }
+        Err(Fault::OutputTooLong) => {
+            // A was too high.
+            Some(Ordering::Greater)
+        }
+        Err(Fault::IncorrectOutput { pos: _, value: _ }) => {
+            // A holds a wrong value, but we don't know if it is too
+            // low or too high.
+            None
+        }
+        Err(e) => {
+            panic!("cpu execution fault: {e:?}");
         }
     }
-    lower
 }
 
-fn values_as_hex<T: LowerHex>(values: &[T]) -> String {
-    values
-        .iter()
-        .map(|v| format!("{v:#02x}"))
-        .collect::<Vec<_>>()
-        .join(",")
-}
-
-fn count_correct_final_digits(got: &[u8], expected: &[u8]) -> usize {
-    expected
-        .iter()
-        .rev()
-        .zip(got.iter().rev())
-        .take_while(|(e, g)| e == g)
-        .count()
-}
-
-#[test]
-fn test_count_correct_final_digits() {
-    assert_eq!(count_correct_final_digits(&[], &[]), 0);
-    assert_eq!(count_correct_final_digits(&[0], &[0]), 1);
-    assert_eq!(count_correct_final_digits(&[1], &[2]), 0);
-}
-
-fn search_lowest_bits(
-    cpu: &Computer,
-    program: &Program,
-    a_prefix: Number,
-    want_output_digits: usize,
-) -> Vec<u8> {
-    let accept = |lower_bits: &u8| -> bool {
-        let a: Number = (a_prefix << 3) | Number::from(*lower_bits);
-        match run_program_with_a_value(&cpu, program, a) {
-            Err(e) => {
-                panic!("cpu failed: {e}");
-            }
-            Ok(values) => {
-                let correct = count_correct_final_digits(&values, &program.values);
-                correct >= want_output_digits
+fn binary_search<F>(probe: F, mut range: Range<Number>) -> Option<Number>
+where
+    F: Fn(Number) -> Ordering,
+{
+    match probe(range.start) {
+        Ordering::Greater => None,
+        Ordering::Equal => Some(range.start),
+        Ordering::Less => {
+            match probe(range.end) {
+                Ordering::Less => None,
+                Ordering::Equal => Some(range.end),
+                Ordering::Greater => {
+                    // the range is good.
+                    while !range.is_empty() {
+                        let len = range.end - range.start;
+                        assert!(len > 0);
+                        if len == 1 {
+                            return Some(range.start);
+                        } else {
+                            let mid = range.start + len / 2;
+                            match probe(mid) {
+                                Ordering::Less => {
+                                    // probe point is too low.
+                                    range = mid..range.end;
+                                }
+                                Ordering::Greater => {
+                                    // probe point is too high
+                                    range = range.start..mid;
+                                }
+                                Ordering::Equal => {
+                                    return Some(mid);
+                                }
+                            }
+                        }
+                    }
+                    // This is unexpected.
+                    panic!("solution slipped through the cracks of binary_search");
+                }
             }
         }
-    };
-
-    (0u8..8u8).filter(accept).collect()
+    }
 }
 
-fn part2(cpu: &Computer, program: &Program, a_reg_limit: Number) -> Option<Number> {
-    None
+fn search_quine(orig_cpu: &Computer, program: &Program) -> Option<Number> {
+    // Find an upper limit in `upper`.
+    let mut upper = 1;
+    loop {
+        println!("Binary search: trying upper={upper}");
+        match check_quine(orig_cpu, program, upper, &OutputCheckMode::LengthOnly) {
+            Some(Ordering::Less) | None | Some(Ordering::Equal) => {
+                // `upper` is too low or (the None case) we're not
+                // certain it is too high.
+                match upper.checked_mul(2) {
+                    Some(n) => {
+                        upper = n;
+                        continue;
+                    }
+                    None => {
+                        panic!("A value is out of range");
+                    }
+                }
+            }
+            Some(Ordering::Greater) => {
+                break;
+            }
+        }
+    }
+    let mut lower = 0;
+    loop {
+        println!("Binary search setup: trying lower={lower}");
+        lower = match check_quine(orig_cpu, program, lower, &OutputCheckMode::LengthOnly) {
+            Some(Ordering::Less) => match lower.checked_mul(2) {
+                Some(0) => 1,
+                Some(n) => n,
+                None => {
+                    panic!("A value is out of range");
+                }
+            },
+            Some(Ordering::Greater) | None | Some(Ordering::Equal) => {
+                lower /= 2;
+                break;
+            }
+        };
+    }
+    println!("Binary search coarse set-up is complete:\nlower={lower:#b}\nupper={upper:#b}");
+    println!("Binary search coarse set-up is complete:\nlower={lower:10}\nupper={upper:10}");
+
+    let r_lower = binary_search(
+        |a| match check_quine(orig_cpu, program, a, &OutputCheckMode::LengthOnly) {
+            None | Some(Ordering::Equal) => Ordering::Greater,
+            Some(ordering) => ordering,
+        },
+        lower..upper,
+    );
+    let r_upper = binary_search(
+        |a| match check_quine(orig_cpu, program, a, &OutputCheckMode::LengthOnly) {
+            None | Some(Ordering::Equal) => Ordering::Less,
+            Some(ordering) => ordering,
+        },
+        lower..upper,
+    );
+    match (r_lower, r_upper) {
+        (Some(l), Some(u)) => {
+            println!("lower: {l:x}");
+            println!("upper: {u:x}");
+            println!(
+                "there are still {0} ({1:.3e}) values to test",
+                u - l,
+                (u - l) as f64,
+            );
+        }
+        _ => {
+            println!("one side of the range is unbounded");
+        }
+    }
+    // Unfortunately, the above technique yields a value for
+    // (upper-lower) which is around 1e14.  That's too large a range
+    // to search linearly like this.
+    (lower..=upper).find(|a| {
+        Some(Ordering::Equal) == check_quine(orig_cpu, program, *a, &OutputCheckMode::Content)
+    })
+}
+
+fn part2(cpu: &Computer, program: &Program) -> Option<Number> {
+    search_quine(cpu, program)
 }
 
 #[test]
@@ -554,12 +643,12 @@ fn sample_part2_input() -> &'static str {
     )
 }
 
-//#[test]
-//fn test_part2() {
-//    let parser = Parser::new();
-//    let (cpu, program) = parser.parse_input(sample_part2_input());
-//    assert_eq!(part2(cpu, &program, 117441), Some(117440));
-//}
+#[test]
+fn test_part2() {
+    let parser = Parser::new();
+    let (cpu, program) = parser.parse_input(sample_part2_input());
+    assert_eq!(part2(&cpu, &program), Some(117440));
+}
 
 fn main() {
     let input_str = str::from_utf8(include_bytes!("input.txt")).unwrap();
@@ -567,7 +656,7 @@ fn main() {
     let (cpu, program) = parser.parse_input(input_str);
 
     println!("Day 17 part 1: {}", part1(&cpu, &program));
-    match part2(&cpu, &program, Number::MAX) {
+    match part2(&cpu, &program) {
         Some(a) => {
             println!("Day 17 part 2: {a}");
         }
