@@ -38,7 +38,7 @@ impl World {
     fn neighbours_in_bbox(&self, current: &Node) -> impl Iterator<Item = Position> + use<'_> {
         let curr = *current;
         ALL_MOVE_OPTIONS.iter().filter_map(move |d| {
-            let p = curr.move_direction(&d);
+            let p = curr.move_direction(d);
             if self.bbox.contains(&p) {
                 Some(p)
             } else {
@@ -48,11 +48,11 @@ impl World {
     }
 
     fn distances_from_origin(&self) -> GenericMap<Position, Distance> {
-        let neighbours = |n: &Node, _step: Distance| self.passable_neighbours(n).into_iter();
+        let neighbours = |n: &Node, _step: Distance| self.passable_neighbours(n);
         let at_goal = |_, n: &Node| self.at_goal(n);
 
         fn fixed_edge_cost<'a, 'b>(n1: &'a Node, n2: &'b Node) -> Distance {
-            assert!(n1.is_neighbour_of(&n2));
+            assert!(n1.is_neighbour_of(n2));
             1
         }
         dijkstra(self.start_node(), neighbours, fixed_edge_cost, at_goal)
@@ -241,7 +241,7 @@ fn all_points_within_manhattan_dist_of<'a>(
                     y: pos.y - ytravel,
                 },
             ]);
-            candidates.into_iter().filter(|pos| bbox.contains(&pos))
+            candidates.into_iter().filter(|pos| bbox.contains(pos))
         })
     })
 }
