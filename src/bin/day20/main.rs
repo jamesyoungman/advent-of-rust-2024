@@ -236,16 +236,6 @@ fn find_number_of_cheats(world: &World, min_saving: i64, max_cheat: i64) -> usiz
     assert!(min_saving >= 0);
     assert!(max_cheat >= 0);
     let distance_from_origin: HashMap<Position, Distance> = world.distances_from_origin();
-
-    // We now need to enumerate all pairs of points which aren't walls
-    // and between which we can move within the cheat time, where the
-    // saving with the cheat would be at least 100 picoseconds.
-    //
-    // Let's denote a candidate pair as (s, d).  For this pair to have
-    // a saving of at least 100 picoseconds, the distance for (s,
-    // goal) must itself be < 100 picoseconds.  Similarly, if the
-    // distance for (origin, d) is less than 100 picoseconds, we can't
-    // save 100.
     assert_eq!(distance_from_origin.get(&world.origin), Some(&0));
 
     let distance_between_points = |from: &Position, to: &Position| -> Option<i64> {
@@ -261,39 +251,48 @@ fn find_number_of_cheats(world: &World, min_saving: i64, max_cheat: i64) -> usiz
         }
     };
 
-    let possible_cheat_endpoints: Vec<Position> = distance_from_origin
+    // We now need to count all pairs of points which aren't walls and
+    // between which we can move within the cheat time, where the
+    // saving with the cheat would be at least 100 picoseconds.  We
+    // want to count point-pairs because different routed between the
+    // same cheat start and end count as the same cheat.
+    //
+    // Let's denote a candidate pair as (s, d).  For this pair to have
+    // a saving of at least 100 picoseconds, the distance for (s,
+    // goal) must itself be < 100 picoseconds.  Similarly, if the
+    // distance for (origin, d) is less than 100 picoseconds, we can't
+    // save 100.
+    distance_from_origin
         .iter()
+        // Identify possible cheat end points
         .filter_map(|(pos, dist_from_origin)| {
             if *dist_from_origin > min_saving {
                 Some(pos)
             } else {
+                // The cheat end point is so close to the origin that
+                // we cannot make a saving of min_saving.
                 None
             }
         })
-        .copied()
-        .collect();
-    let possible_cheats: Vec<(Position, Position, i64)> = possible_cheat_endpoints
-        .iter()
-        .flat_map(|end| {
-            all_points_within_manhattan_dist_of(*end, max_cheat, &world.bbox)
-                .map(move |start| (start, end))
+        .flat_map(|cheat_end| {
+            // For each cheat end point, identify the start points
+            // reachable within the cheat limit.
+            all_points_within_manhattan_dist_of(*cheat_end, max_cheat, &world.bbox)
+                .filter(|cheat_start| !world.walls.contains(cheat_start))
+                .filter(
+                    // Accept only values of (cheat_start, cheat_end)
+                    // for which the saving is sufficient.
+                    |cheat_start| match distance_between_points(cheat_start, cheat_end) {
+                        Some(long_way_around) => {
+                            let cheat_travel_time = manhattan(cheat_start, cheat_end);
+                            let saving = long_way_around - cheat_travel_time;
+                            saving >= min_saving
+                        }
+                        None => false,
+                    },
+                )
         })
-        .filter_map(|(start, end)| {
-            let cheat_travel_time = manhattan(&start, end);
-            match distance_between_points(&start, end) {
-                Some(long_way_around) => {
-                    let saving = long_way_around - cheat_travel_time;
-                    if saving >= min_saving {
-                        Some((start, *end, saving))
-                    } else {
-                        None
-                    }
-                }
-                None => None,
-            }
-        })
-        .collect();
-    possible_cheats.len()
+        .count()
 }
 
 #[test]
