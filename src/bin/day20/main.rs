@@ -2,6 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Write};
 use std::str;
 
+use itertools::Itertools;
+
 use lib::graph::dijkstra;
 use lib::grid::{manhattan, BoundingBox, Position, ALL_MOVE_OPTIONS};
 
@@ -165,27 +167,20 @@ fn all_points_within_manhattan_dist_of(
     (0..=dist).flat_map(move |ytravel| {
         let remaining = dist - ytravel;
         (0..=remaining).flat_map(move |xtravel| {
-            // We Use a set here to avoid duplication if xtravel or
-            // ytravel is 0.
-            let candidates: HashSet<Position> = HashSet::from([
-                Position {
-                    x: pos.x + xtravel,
-                    y: pos.y + ytravel,
-                },
-                Position {
-                    x: pos.x + xtravel,
-                    y: pos.y - ytravel,
-                },
-                Position {
-                    x: pos.x - xtravel,
-                    y: pos.y + ytravel,
-                },
-                Position {
-                    x: pos.x - xtravel,
-                    y: pos.y - ytravel,
-                },
-            ]);
-            candidates.into_iter().filter(|pos| bbox.contains(pos))
+            [
+                (xtravel, ytravel),
+                (xtravel, -ytravel),
+                (-xtravel, ytravel),
+                (-xtravel, -ytravel),
+            ]
+            .into_iter()
+            // Avoid duplication if xtravel or ytravel is 0.
+            .unique()
+            .map(move |(dx, dy)| Position {
+                x: pos.x + dx,
+                y: pos.y + dy,
+            })
+            .filter(|pos| bbox.contains(pos))
         })
     })
 }
