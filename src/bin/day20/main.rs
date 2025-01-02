@@ -1,16 +1,10 @@
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Write};
-use std::hash::Hash;
 use std::str;
 
-use rustc_hash::FxHashMap;
-
+use lib::graph::dijkstra;
 use lib::grid::{manhattan, BoundingBox, Position, ALL_MOVE_OPTIONS};
-use lib::minheap::MinHeap;
 
-type Node = Position;
-
-type GenericMap<K, V> = FxHashMap<K, V>;
 type Distance = i64;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -26,16 +20,15 @@ impl World {
         self.origin
     }
 
-    fn at_goal(&self, n: &Node) -> bool {
-        &self.goal == n
-    }
-
-    pub fn passable_neighbours(&self, current: &Node) -> impl Iterator<Item = Position> + use<'_> {
+    pub fn passable_neighbours(
+        &self,
+        current: &Position,
+    ) -> impl Iterator<Item = Position> + use<'_> {
         self.neighbours_in_bbox(current)
             .filter(|pos| !self.walls.contains(pos))
     }
 
-    fn neighbours_in_bbox(&self, current: &Node) -> impl Iterator<Item = Position> + use<'_> {
+    fn neighbours_in_bbox(&self, current: &Position) -> impl Iterator<Item = Position> + use<'_> {
         let curr = *current;
         ALL_MOVE_OPTIONS.iter().filter_map(move |d| {
             let p = curr.move_direction(d);
@@ -47,15 +40,14 @@ impl World {
         })
     }
 
-    fn distances_from_origin(&self) -> GenericMap<Position, Distance> {
-        let neighbours = |n: &Node, _step: Distance| self.passable_neighbours(n);
-        let at_goal = |_, n: &Node| self.at_goal(n);
+    fn distances_from_origin(&self) -> HashMap<Position, Distance> {
+        let neighbours = |n: &Position, _step: Distance| self.passable_neighbours(n);
 
-        fn fixed_edge_cost<'a, 'b>(n1: &'a Node, n2: &'b Node) -> Distance {
+        fn fixed_edge_cost(n1: &Position, n2: &Position) -> Distance {
             assert!(n1.is_neighbour_of(n2));
             1
         }
-        dijkstra(self.start_node(), neighbours, fixed_edge_cost, at_goal)
+        dijkstra(self.start_node(), neighbours, fixed_edge_cost)
     }
 }
 
@@ -159,64 +151,16 @@ fn test_parse_roundtrip() {
 #[test]
 fn test_goal_dist_sample_input() {
     let world = World::from(sample_input());
-    let distance_from_origin: GenericMap<Position, Distance> = world.distances_from_origin();
+    let distance_from_origin: HashMap<Position, Distance> = world.distances_from_origin();
     assert_eq!(distance_from_origin.get(&world.start_node()), Some(&0));
     assert_eq!(distance_from_origin.get(&world.goal), Some(&84));
 }
 
-fn dijkstra<N, E, FN, FB, IN>(
-    source: N,
-    mut neighbours: FN,
-    edge_cost: E,
-    _goal: FB,
-) -> GenericMap<N, Distance>
-where
-    N: Hash + Eq + PartialEq + Ord + Clone,
-    FN: for<'a> FnMut(&'a N, Distance) -> IN, // enumerates neighbours
-    E: for<'b> Fn(&'b N, &'b N) -> Distance,  // edge cost
-    IN: Iterator<Item = N>,                   // iterates over neighbours
-    FB: FnMut(usize, &N) -> bool,             // are we at a goal?
-{
-    let mut q: MinHeap<(Distance, N)> = MinHeap::new();
-    let mut prev: GenericMap<N, BTreeSet<N>> = GenericMap::default();
-    let mut dist: GenericMap<N, Distance> = GenericMap::default();
-
-    dist.insert(source.clone(), 0);
-    q.push((0, source));
-
-    //let mut count = 0;
-    while let Some((upri, u)) = q.pop() {
-        //if count % 1000 == 0 {
-        //    println!("iteration {count:6}: PQ length is {0:6}", q.len());
-        //}
-        //count += 1;
-        for v in neighbours(&u, upri) {
-            let cost = edge_cost(&u, &v);
-            let alt: Distance = dist.get(&u).unwrap_or(&Distance::MAX).saturating_add(cost);
-            let dist_v: Distance = *dist.get(&v).unwrap_or(&Distance::MAX);
-            if alt <= dist_v {
-                prev.entry(v.clone())
-                    .and_modify(|entry| {
-                        entry.insert(u.clone());
-                    })
-                    .or_insert_with(|| {
-                        let mut s = BTreeSet::new();
-                        s.insert(u.clone());
-                        s
-                    });
-                dist.insert(v.clone(), alt);
-                q.push((alt, v));
-            }
-        }
-    }
-    dist
-}
-
-fn all_points_within_manhattan_dist_of<'a>(
+fn all_points_within_manhattan_dist_of(
     pos: Position,
     dist: i64,
-    bbox: &'a BoundingBox,
-) -> impl Iterator<Item = Position> + use<'a> {
+    bbox: &BoundingBox,
+) -> impl Iterator<Item = Position> + use<'_> {
     assert!(dist >= 0);
     (0..=dist).flat_map(move |ytravel| {
         let remaining = dist - ytravel;
@@ -291,7 +235,7 @@ fn test_all_points_within_manhattan_dist_2_of() {
 fn find_number_of_cheats(world: &World, min_saving: i64, max_cheat: i64) -> usize {
     assert!(min_saving >= 0);
     assert!(max_cheat >= 0);
-    let distance_from_origin: GenericMap<Position, Distance> = world.distances_from_origin();
+    let distance_from_origin: HashMap<Position, Distance> = world.distances_from_origin();
 
     // We now need to enumerate all pairs of points which aren't walls
     // and between which we can move within the cheat time, where the
@@ -335,7 +279,7 @@ fn find_number_of_cheats(world: &World, min_saving: i64, max_cheat: i64) -> usiz
                 .map(move |start| (start, end))
         })
         .filter_map(|(start, end)| {
-            let cheat_travel_time = manhattan(&start, &end);
+            let cheat_travel_time = manhattan(&start, end);
             match distance_between_points(&start, end) {
                 Some(long_way_around) => {
                     let saving = long_way_around - cheat_travel_time;
