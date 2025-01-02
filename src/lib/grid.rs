@@ -101,14 +101,12 @@ impl Position {
     }
 
     pub fn is_neighbour_of(&self, other: &Position) -> bool {
-        let dx = self.x.checked_sub(other.x);
-        let dy = self.y.checked_sub(other.y);
-        match (dx, dy) {
-            (Some(dx), Some(dy)) => match (dx, dy) {
-                (1 | -1, 0) | (0, 1 | -1) => true,
-                _ => false,
-            },
-            _ => false,
+        if let (Some(dx), Some(dy)) = (self.x.checked_sub(other.x), self.y.checked_sub(other.y)) {
+            // Neighbours have the same X and a Y that differs by 1,
+            // or the same Y and an X that differs by 1.
+            matches!((dx, dy), (1 | -1, 0) | (0, 1 | -1))
+        } else {
+            false
         }
     }
 
