@@ -353,40 +353,56 @@ fn find_number_of_cheats(world: &World, min_saving: i64, max_cheat: i64) -> usiz
 }
 
 #[test]
-fn test_find_number_of_cheats() {
+fn test_find_number_of_cheats_part1() {
+    const MAX_CHEAT_DIST: i64 = 2;
     let world = World::from(sample_input());
 
     // According to the text of the question, there is one cheat that
     // saves 64 picoseconds.
-    assert_eq!(find_number_of_cheats(&world, 64, 2), 1);
+    assert_eq!(find_number_of_cheats(&world, 64, MAX_CHEAT_DIST), 1);
 
     // There is 1 cheat that saves exactly 40, hence 2 that save at
     // least 40 (the one that saves 40 and the one that saves 64).
-    assert_eq!(find_number_of_cheats(&world, 40, 2), 2);
+    assert_eq!(find_number_of_cheats(&world, 40, MAX_CHEAT_DIST), 2);
 
     // There is 1 cheat that saves exactly 38, hence 3 that save at
     // least 38.
-    assert_eq!(find_number_of_cheats(&world, 38, 2), 3);
+    assert_eq!(find_number_of_cheats(&world, 38, MAX_CHEAT_DIST), 3);
 
     // There is 1 cheat that saves exactly 36, hence 4 that save at
     // least 36.
-    assert_eq!(find_number_of_cheats(&world, 36, 2), 4);
+    assert_eq!(find_number_of_cheats(&world, 36, MAX_CHEAT_DIST), 4);
 
     // There is 1 cheat that saves exactly 20, hence 5 that save at
     // least 20.
-    assert_eq!(find_number_of_cheats(&world, 20, 2), 5);
+    assert_eq!(find_number_of_cheats(&world, 20, MAX_CHEAT_DIST), 5);
 
     // There are 3 cheats that save ewxactly 12, hence 8 that save at
     // least 12.
-    assert_eq!(find_number_of_cheats(&world, 12, 2), 8);
+    assert_eq!(find_number_of_cheats(&world, 12, MAX_CHEAT_DIST), 8);
+}
+
+#[test]
+fn test_find_number_of_cheats_part2() {
+    const MAX_CHEAT_DIST: i64 = 20;
+    let world = World::from(sample_input());
+
+    // According to the text of the question, there are 3 cheats that
+    // save 76 picoseconds.
+    assert_eq!(find_number_of_cheats(&world, 76, MAX_CHEAT_DIST), 3);
 }
 
 fn part1(world: &World) -> usize {
     find_number_of_cheats(world, 100, 2)
 }
 
+fn part2(world: &World) -> usize {
+    find_number_of_cheats(world, 100, 20)
+}
+
 fn main() {
     let input_str = str::from_utf8(include_bytes!("input.txt")).unwrap();
     let world = World::from(input_str);
     println!("Day 20 part 1: {}", part1(&world));
+    println!("Day 20 part 2: {}", part2(&world));
 }
