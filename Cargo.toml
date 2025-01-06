@@ -9,6 +9,9 @@ authors = ["James Youngman <james@youngman.org>"]
 [profile.release]
 debug = true
 
+[build-dependencies]
+regex = "1"
+
 [dependencies]
 clap = "4"
 itertools = "0.13"
