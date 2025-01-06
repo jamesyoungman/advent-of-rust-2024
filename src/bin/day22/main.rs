@@ -174,10 +174,10 @@ fn main() {
     println!("Day 22 part 1: {}", part1(&input));
     match part2(&input) {
         Some(answer) => {
-            println!("Day 22 part 1: {answer}");
+            println!("Day 22 part 2: {answer}");
         }
         None => {
-            println!("Day 22 part 1: could not find a solution");
+            println!("Day 22 part 2: could not find a solution");
         }
     }
 }
