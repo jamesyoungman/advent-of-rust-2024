@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::num::NonZero;
 
 use lib::error::Fail;
 
@@ -44,6 +45,7 @@ impl Error for Fault {}
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum OutputCheckMode {
     Off,
+    Suffix(NonZero<usize>),
     Content,
     LengthOnly,
 }
@@ -111,6 +113,7 @@ impl Computer {
         mut pc: usize,
         verbose: bool,
     ) -> Result<Vec<u8>, Fault> {
+        let orig_a = self.a;
         let mut output_values = Vec::new();
         loop {
             match self.run_until_output(program, pc, verbose) {
@@ -120,6 +123,57 @@ impl Computer {
                         dbg!(&output_value);
                     }
                     match check_mode {
+                        &OutputCheckMode::Suffix(sfxlen) => {
+                            // We want to check our output against the
+                            // tail of the program (which is the
+                            // target).
+                            //
+                            // Our invariant is that the values in
+                            // `output_values` all match the analogous
+                            // items in program.values.
+                            //
+                            //
+                            // Suppose output_values.len() is 2,
+                            // sfxlen is 4, snd program.values.len()
+                            // is 6:
+                            //
+                            // P0 P1 P2 P3 P4 P5
+                            // -- -- O1 O2 VV ??
+                            //
+                            // The value in `output_value` is VV.  we
+                            // need to compare `output_value` against
+                            // program.values[program.values.len() -
+                            // sfxlen + output_values.len()].
+                            let pos: usize =
+                                program.values.len() - sfxlen.get() + output_values.len();
+                            let expected_val = *program
+                                .values
+                                .get(pos)
+                                .expect("suffix length must be greater than 0");
+                            println!(
+				"A={orig_a:6},L={sfxlen}: output value {0}: checking suffix at position {pos}/{1} (expected {expected_val}, got {output_value})",
+				output_values.len(),
+				program.values.len(),
+			    );
+                            if expected_val == output_value {
+                                // Good so far, are we done?
+                                if output_values.len() + 1 == sfxlen.get() {
+                                    output_values.push(output_value);
+                                    println!("all good, we matched the whole suffix");
+                                    return Ok(output_values);
+                                } else {
+                                    println!("ok so far");
+                                }
+                            // Otherwise, continue matching.
+                            } else {
+                                println!("nope");
+                                return Err(Fault::IncorrectOutput {
+                                    pos,
+                                    value: output_value,
+                                });
+                            }
+                        }
+
                         OutputCheckMode::Content => match program.values.get(output_values.len()) {
                             None => {
                                 return Err(Fault::OutputTooLong);
@@ -144,6 +198,11 @@ impl Computer {
                 Err(Fault::Halt) => {
                     match check_mode {
                         OutputCheckMode::Off => (),
+                        &OutputCheckMode::Suffix(sfxlen) => {
+                            if output_values.len() < sfxlen.get() {
+                                return Err(Fault::OutputTooShort);
+                            }
+                        }
                         OutputCheckMode::Content | OutputCheckMode::LengthOnly => {
                             if output_values.len() < program.values.len() {
                                 return Err(Fault::OutputTooShort);

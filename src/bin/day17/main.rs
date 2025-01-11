@@ -3,6 +3,7 @@ use std::ops::Range;
 
 use std::env;
 
+use std::iter;
 use std::str;
 
 mod machine;
@@ -194,6 +195,54 @@ where
     }
 }
 
+fn suffix_match(v1: &[u8], v2: &[u8], len: usize) -> bool {
+    if v1.len() < len || v2.len() < len {
+        false
+    } else {
+        v1.iter()
+            .rev()
+            .zip(v2.iter().rev())
+            .take(len)
+            .all(|(a, b)| a == b)
+    }
+}
+
+#[test]
+fn test_suffix_match() {
+    let a = [1, 2, 3, 4];
+    let b = [6, 7, 3, 4];
+    assert!(suffix_match(&a, &b, 0));
+    assert!(suffix_match(&a, &b, 1));
+    assert!(suffix_match(&a, &b, 2));
+    assert!(suffix_match(&a, &a, 4));
+    assert!(suffix_match(&b, &b, 4));
+    assert!(!suffix_match(&a, &b, 3));
+}
+
+fn search_quine_2(orig_cpu: &Computer, program: &Program) -> Option<Number> {
+    let mut a: Number = 0;
+    let mut suffix = 1;
+    while suffix <= program.values.len() {
+        let mut cpu = Computer { a, ..*orig_cpu };
+        match cpu.run(program, &OutputCheckMode::Off, 0, false) {
+            Err(_) => (),
+            Ok(values) => {
+                if values == program.values {
+                    return Some(a);
+                } else {
+                    if suffix_match(values.as_slice(), program.values.as_slice(), suffix) {
+                        a *= 8;
+                        suffix += 1;
+                    } else {
+                        a += 1;
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 fn search_quine(orig_cpu: &Computer, program: &Program) -> Option<Number> {
     // Find an upper limit in `upper`.
     let mut upper = 1;
@@ -275,7 +324,9 @@ fn search_quine(orig_cpu: &Computer, program: &Program) -> Option<Number> {
 }
 
 fn part2(cpu: &Computer, program: &Program) -> Option<Number> {
-    search_quine(cpu, program)
+    //search_quine(cpu, program)
+
+    search_quine_2(cpu, program)
 }
 
 #[test]
